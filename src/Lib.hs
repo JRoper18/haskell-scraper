@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 module Lib where
 
 
@@ -10,7 +12,10 @@ import System.Posix.Internals (newFilePath)
 import ErrUtils
 import Data.Either
 import Data.List
+import Data.Maybe
 import Data.Char (isSpace)
+import Util
+
 import Bag
 import System.IO (hPutStrLn, stderr)
 
@@ -27,10 +32,7 @@ showDecl docMaker decl = do
     strList
 
 keepDecl :: GHC.LHsDecl ( GHC.GhcPs ) -> Bool
-keepDecl decl = case ( unpackLocatedData decl ) of
-  SigD _ _ -> True
-  ValD _ _ -> True
-  _ -> False
+keepDecl decl = isJust ( getDeclIds (decl) )
 
 printErrMessages :: ErrorMessages -> IO ()
 printErrMessages msgs = do
@@ -69,6 +71,18 @@ getDeclName docMaker decl = do
         Just ids -> Just ( docMaker ( ppr ( head ids ) ) )
         Nothing -> Nothing
 
+getDeclNamePair :: (SDoc -> String) -> LHsDecl GhcPs -> Maybe (LHsDecl GhcPs, String)
+getDeclNamePair docMaker decl = case ( getDeclName docMaker decl ) of
+    Just name -> Just (decl, name)
+    Nothing -> Nothing
+
+getNamedDecls :: (SDoc -> String) -> [LHsDecl GhcPs] -> [(LHsDecl GhcPs, String)]
+getNamedDecls docMaker decls = do
+    let declMaybeNames = map (getDeclNamePair docMaker) decls
+    catMaybes declMaybeNames
+
+declNamesEqual :: (SDoc -> String) -> LHsDecl GhcPs -> LHsDecl GhcPs -> Bool 
+declNamesEqual docMaker decl1 decl2 = getDeclName docMaker decl1 == getDeclName docMaker decl2
 
 declStrs :: String -> IO (Either ErrUtils.ErrorMessages String)
 declStrs targetFile = do
@@ -82,9 +96,9 @@ declStrs targetFile = do
       -- print (dynTypeRep (toDyn dflags))
       -- print ppr ( moduleFromSource res)
       let decls = hsmodDecls ( unpackLocatedData (res) )
-      let goodDecls = filter keepDecl decls
-      let declStrs = map ( showDecl docMaker ) goodDecls
-      let finalStr = intercalate "\n" declStrs
+      let groupedDecls = groupBy ( declNamesEqual docMaker) decls
+      let groupedDeclStrs = map ( map ( showDecl docMaker ) ) groupedDecls 
+      let finalStr = intercalate "\n<|splitter|>\n" ( map ( intercalate "\n" ) groupedDeclStrs )
       return ( Right finalStr )
     Left x -> do
       return (Left x)
