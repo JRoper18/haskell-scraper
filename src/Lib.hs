@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
+{-# HLINT ignore "Use join" #-}
 module Lib where
 
 
@@ -13,12 +14,17 @@ import ErrUtils
 import Data.Either
 import Data.List
 import Data.Maybe
+import Data.Data
 import Data.Char (isSpace)
 import Util
-
+import CoreUtils
 import Bag
+import Desugar
+import TcSMonad
+import TcRnTypes
 import System.IO (hPutStrLn, stderr)
-
+import GHC.Unicode
+import GhcPlugins
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -47,9 +53,9 @@ processSourceFile outF inF = do
     Right x -> do 
       appendFile outF x
       -- If the string isn't blank add a splitter. 
-      if not ( all isSpace x ) then appendFile outF "\n<|splitter|>\n" else putStrLn "file no functions"
-    Left x -> do 
-      printErrMessages x
+      if not ( all isSpace x ) then appendFile outF "\n<|splitter|>\n" else return ()
+    Left x -> return () 
+      -- printErrMessages x
 
 getDeclIds :: LHsDecl GhcPs -> Maybe [LIdP GhcPs]
 getDeclIds decl = case ( unpackLocatedData decl ) of 
@@ -103,6 +109,79 @@ declStrs targetFile = do
     Left x -> do
       return (Left x)
 
+typecheckSource :: String -> IO ( TypecheckedSource )
+typecheckSource targetFile =
+    defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
+      fileContents <- readFile targetFile
+      runGhc (Just libdir) $ do
+        dflags <- getSessionDynFlags
+        setSessionDynFlags dflags
+        target <- guessTarget targetFile Nothing
+        setTargets [target]
+        load LoadAllTargets
+        modSum <- getModSummary $ mkModuleName "A"
+        p <- parseModule modSum
+        t <- typecheckModule p
+        return ( tm_typechecked_source t )
+
+
+
+
+lexprType :: LHsExpr GhcTc -> TcM ( Maybe Type ) 
+lexprType lexpr = do
+  envTup <- runTcS ( getTopEnv )
+  let hsEnv = fst envTup 
+  exprAndMsgs <- liftIO ( deSugarExpr hsEnv lexpr )
+  let exprMb = snd exprAndMsgs
+  case exprMb of
+    Just coreExpr -> do
+      let t = CoreUtils.exprType coreExpr
+      return ( Just $ t ) 
+    Nothing -> do
+      return Nothing
+
+
+processGuardedMatch :: LGRHS GhcTc (LHsExpr GhcTc) -> Maybe String
+processGuardedMatch match = do
+  case (unpackLocatedData match) of
+    GRHS _ lstmt exprs -> do
+      Just $ "todo"
+    _ -> Nothing
+
+processFunctionMatch :: (SDoc -> String) -> Match GhcTc ( LHsExpr GhcTc ) -> Maybe String 
+processFunctionMatch docMaker match = do
+  let rhs = m_grhss match
+  let rhsStrs = catMaybes $ map processGuardedMatch ( grhssGRHSs rhs )
+  Just $ intercalate "functMatch" rhsStrs
+
+getHsBindLRType :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Maybe String
+getHsBindLRType docMaker bind = case bind of 
+  FunBind fun_ext _ fun_matches _ _ -> do
+    let argTypes = docMaker $ ppr $ mg_arg_tys $ mg_ext fun_matches 
+    let resType = docMaker $ ppr $ mg_res_ty $ mg_ext fun_matches 
+    let matches = map ( unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
+    -- let matchPatterns = map m_pats matches
+    let matchResults = catMaybes $ map ( processFunctionMatch docMaker ) matches
+    Just $ intercalate "match" matchResults  
+  -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
+  -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
+  AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
+    let subBindStrs = catMaybes $ map ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList abs_binds )
+    Just ( intercalate "split" subBindStrs ) 
+  _ -> Nothing
+
+getHsBindLRName :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Maybe String
+getHsBindLRName docMaker bind = case bind of 
+  -- FunBind _ _ _ _ _ -> Just $ docMaker (ppr bind)
+  -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
+  -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
+  AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
+    let subVals = map abe_mono abs_exports
+    Just ( intercalate "\n" (map ( docMaker . ppr ) subVals ) ) 
+  _ -> Nothing
+
+
+
 parseSource :: String -> IO (Either ErrUtils.ErrorMessages ParsedSource)
 parseSource targetFile =
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
@@ -115,7 +194,8 @@ parseSource targetFile =
         -- target <- guessTarget targetFile Nothing
         -- setTargets [target]
         -- load LoadAllTargets
-        let parseFullRes = parser fileContents dflags targetFile
+        let filteredTxt = filter (\s -> isAscii s && (isSpace s || not ( isControl s))) fileContents
+        let parseFullRes = parser filteredTxt dflags targetFile
         let parseRes = snd parseFullRes
         return parseRes
         -- let ret = either ( Left ) ( $ Right parsedSource ) 

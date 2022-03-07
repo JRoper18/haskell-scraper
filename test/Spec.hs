@@ -4,20 +4,28 @@ import Test.Hspec
 import GHC.Paths ( libdir )
 import GHC
 import DynFlags
-import Lib
 import Data.Tuple
 import Data.Either
 import Data.Maybe
 import Outputable
+import GhcPlugins 
+import Lib
+import Bag
 
 main :: IO ()
 main = do
     dflags <- runGhc (Just libdir) $ do
         getSessionDynFlags
     let docMaker = showSDoc dflags
-    parsedSourceOrErr <- parseSource "./test/resources/f.hs"
+    let testF = "./test/resources/f.hs"
+    parsedSourceOrErr <- parseSource testF
+    tcedSource <- typecheckSource testF
+    let typedBinds = catMaybes $ map ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList tcedSource )
+    let tcStr = docMaker ( ppr ( tcedSource ) )
+    putStrLn tcStr
+    print typedBinds
     hspec $ do
-        describe "Lib" $ do
+        describe "parsing" $ do
             it "should parse the source" $ do
                 case parsedSourceOrErr of
                     Right parsedSource -> do
@@ -27,5 +35,8 @@ main = do
                         print showableDecls
                     Left res -> printErrMessages res
                 ( isRight parsedSourceOrErr ) `shouldBe` True
+        -- describe "typechecking" $ do
+        --     it "should typecheck files" $ do
+                
 
 
