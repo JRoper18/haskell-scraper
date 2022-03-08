@@ -31,7 +31,9 @@ library
   hs-source-dirs:
       src
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
+    , bytestring
     , ghc >=9.2.1
     , ghc-paths
     , hspec >=2.2.0
@@ -46,7 +48,9 @@ executable HaskellScraper-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HaskellScraper
+    , aeson
     , base >=4.7 && <5
+    , bytestring
     , ghc >=9.2.1
     , ghc-paths
     , hspec >=2.2.0
@@ -59,10 +63,12 @@ test-suite HaskellScraper-test
       Paths_HaskellScraper
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -XFlexibleInstances
   build-depends:
       HaskellScraper
+    , aeson
     , base >=4.7 && <5
+    , bytestring
     , ghc >=9.2.1
     , ghc-paths
     , hspec >=2.2.0

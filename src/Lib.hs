@@ -1,6 +1,12 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
 {-# HLINT ignore "Use join" #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
+
 module Lib where
 
 
@@ -15,6 +21,7 @@ import Data.Either
 import Data.List
 import Data.Maybe
 import Data.Data
+import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Char (isSpace)
 import Util
 import CoreUtils
@@ -25,6 +32,18 @@ import TcRnTypes
 import System.IO (hPutStrLn, stderr)
 import GHC.Unicode
 import GhcPlugins
+import Data.Aeson
+import GHC.Generics
+
+-- deriving instance Generic ( LHsExpr GhcTc )
+
+-- instance ToJSON ( LHsExpr GhcTc ) where
+--     -- No need to provide a toJSON implementation.
+
+--     -- For efficiency, we write a simple toEncoding implementation, as
+--     -- the default version uses toJSON.
+
+-- instance FromJSON ( LHsExpr GhcTc )
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -124,8 +143,51 @@ typecheckSource targetFile =
         t <- typecheckModule p
         return ( tm_typechecked_source t )
 
+typeStmtLocs :: ExprLStmt GhcTc -> Ghc ( [(SrcSpan, Type)] )
+typeStmtLocs lStmt = do
+  let stmt = unpackLocatedData lStmt
+  let stmtLoc = unpackLocatedLocation lStmt
+  res <- case stmt of
+                BodyStmt _ body sExpr1 sExpr2 -> typeExprLocs body
+  return $ res 
 
+typeExprLocs :: LHsExpr GhcTc -> Ghc ( [(SrcSpan, Type)] )
+typeExprLocs lexpr = do
+  let expr = unpackLocatedData lexpr
+  let loc = unpackLocatedLocation lexpr
 
+  tMb <- lexprType lexpr
+  let initialList = case tMb of
+                      Just t -> [(loc, t)]
+                      Nothing -> []
+  let subExprs = case expr of
+                    HsApp _ e1 e2 -> [e1, e2]
+                    HsAppType _ e1 _ -> [e1]
+                    OpApp _ e1 e2 e3 -> [e1, e2, e3]
+                    NegApp _ e1 _ -> [e1]
+                    HsPar _ e1 -> [e1]
+                    HsLet _ _ e1 -> [e1]
+                    ExplicitList _ _ l -> l
+                    _ -> []
+  subExprTypes <- mapM lexprType subExprs
+  let subExprLocs = map unpackLocatedLocation subExprs
+  
+  let zippedMb = (zip subExprLocs subExprTypes)
+  let retMb = map ( \x -> case (snd x) of 
+                          Just xin -> Just (fst x, xin)
+                          Nothing -> Nothing 
+                ) zippedMb
+  let complexSubExprs = case expr of
+                          HsDo _ _ lStmtList -> [] -- todo
+                          _ -> []
+  return $ initialList ++ (catMaybes retMb)
+
+  
+lexprStr :: (SDoc -> String) -> LHsExpr GhcTc -> Ghc ( Maybe String )
+lexprStr docMaker lexpr = do
+  typeLocs <- typeExprLocs lexpr
+  return $ Just $ show $ map ( docMaker . ppr . snd ) typeLocs
+  -- return $ Just $ docMaker $ ppr lexpr
 
 lexprType :: LHsExpr GhcTc -> Ghc ( Maybe Type ) 
 lexprType lexpr = do
@@ -144,8 +206,8 @@ processGuardedMatch :: (SDoc -> String) -> LGRHS GhcTc (LHsExpr GhcTc) -> Ghc ( 
 processGuardedMatch docMaker match = do
   case (unpackLocatedData match) of
     GRHS _ lstmt exprs -> do
-      t <- lexprType exprs
-      return ( Just ( docMaker ( ppr t ) ) )
+      tMb <- lexprStr docMaker exprs
+      return tMb
     _ -> return Nothing
 
 processFunctionMatch :: (SDoc -> String) -> Match GhcTc ( LHsExpr GhcTc ) -> Ghc ( Maybe String )
@@ -164,7 +226,7 @@ getHsBindLRType docMaker bind = case bind of
     -- let matchPatterns = map m_pats matches
     matchStrsMb <- mapM ( processFunctionMatch docMaker  ) matches
     let matchResults = catMaybes matchStrsMb
-    return ( Just $ intercalate "match" matchResults )
+    return ( Just $ intercalate "\nmatch\n" matchResults )
   -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
   -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
   AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do

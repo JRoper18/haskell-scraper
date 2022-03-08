@@ -22,11 +22,24 @@ main = do
     tcedSource <- typecheckSource testF
     typedBindsMb <- runGhc (Just libdir) $ do
         hsc_env <- getSession
+        
         mapM ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList tcedSource )
     let typedBinds = catMaybes typedBindsMb
+    dsugar <- runGhc (Just libdir) $ do
+        dflags <- getSessionDynFlags
+        setSessionDynFlags dflags
+        target <- guessTarget testF Nothing
+        setTargets [target]
+        load LoadAllTargets
+        modSum <- getModSummary $ mkModuleName "A"
+        p <- parseModule modSum
+        t <- typecheckModule p
+        d <- desugarModule t
+        return $ mg_binds $ dm_core_module d
+    putStrLn $ docMaker $ ppr $ dsugar
     let tcStr = docMaker ( ppr ( tcedSource ) )
-    putStrLn tcStr
-    print typedBinds
+    -- putStrLn tcStr
+    mapM_ putStrLn typedBinds
     hspec $ do
         describe "parsing" $ do
             it "should parse the source" $ do
@@ -35,7 +48,8 @@ main = do
                         let decls = hsmodDecls ( unpackLocatedData (parsedSource) )
                         let namedDecls = getNamedDecls docMaker decls
                         let showableDecls = ( mapFst ( showDecl docMaker ) namedDecls )
-                        print showableDecls
+                        -- print showableDecls
+                        return ()
                     Left res -> printErrMessages res
                 ( isRight parsedSourceOrErr ) `shouldBe` True
         -- describe "typechecking" $ do
