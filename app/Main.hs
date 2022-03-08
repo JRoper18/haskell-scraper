@@ -10,6 +10,7 @@
 
 import System.Environment
 import Lib
+import Parsed
 
 main :: IO ()
 main = do

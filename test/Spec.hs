@@ -11,6 +11,9 @@ import Outputable
 import GhcPlugins 
 import Lib
 import Bag
+import LibUtil
+import Typed
+import Parsed
 
 main :: IO ()
 main = do
