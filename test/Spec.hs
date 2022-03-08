@@ -20,7 +20,10 @@ main = do
     let testF = "./test/resources/f.hs"
     parsedSourceOrErr <- parseSource testF
     tcedSource <- typecheckSource testF
-    let typedBinds = catMaybes $ map ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList tcedSource )
+    typedBindsMb <- runGhc (Just libdir) $ do
+        hsc_env <- getSession
+        mapM ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList tcedSource )
+    let typedBinds = catMaybes typedBindsMb
     let tcStr = docMaker ( ppr ( tcedSource ) )
     putStrLn tcStr
     print typedBinds
@@ -37,6 +40,7 @@ main = do
                 ( isRight parsedSourceOrErr ) `shouldBe` True
         -- describe "typechecking" $ do
         --     it "should typecheck files" $ do
+
                 
 
 

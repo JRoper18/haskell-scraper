@@ -127,11 +127,10 @@ typecheckSource targetFile =
 
 
 
-lexprType :: LHsExpr GhcTc -> TcM ( Maybe Type ) 
+lexprType :: LHsExpr GhcTc -> Ghc ( Maybe Type ) 
 lexprType lexpr = do
-  envTup <- runTcS ( getTopEnv )
-  let hsEnv = fst envTup 
-  exprAndMsgs <- liftIO ( deSugarExpr hsEnv lexpr )
+  hsc_env <- getSession
+  exprAndMsgs <- liftIO ( deSugarExpr hsc_env lexpr )
   let exprMb = snd exprAndMsgs
   case exprMb of
     Just coreExpr -> do
@@ -141,34 +140,38 @@ lexprType lexpr = do
       return Nothing
 
 
-processGuardedMatch :: LGRHS GhcTc (LHsExpr GhcTc) -> Maybe String
-processGuardedMatch match = do
+processGuardedMatch :: (SDoc -> String) -> LGRHS GhcTc (LHsExpr GhcTc) -> Ghc ( Maybe String )
+processGuardedMatch docMaker match = do
   case (unpackLocatedData match) of
     GRHS _ lstmt exprs -> do
-      Just $ "todo"
-    _ -> Nothing
+      t <- lexprType exprs
+      return ( Just ( docMaker ( ppr t ) ) )
+    _ -> return Nothing
 
-processFunctionMatch :: (SDoc -> String) -> Match GhcTc ( LHsExpr GhcTc ) -> Maybe String 
+processFunctionMatch :: (SDoc -> String) -> Match GhcTc ( LHsExpr GhcTc ) -> Ghc ( Maybe String )
 processFunctionMatch docMaker match = do
   let rhs = m_grhss match
-  let rhsStrs = catMaybes $ map processGuardedMatch ( grhssGRHSs rhs )
-  Just $ intercalate "functMatch" rhsStrs
+  guardRhs <- mapM ( processGuardedMatch docMaker ) ( grhssGRHSs rhs )
+  let rhsStrs = catMaybes guardRhs
+  return ( Just ( intercalate "functMatch" rhsStrs ) )
 
-getHsBindLRType :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Maybe String
+getHsBindLRType :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Ghc ( Maybe String )
 getHsBindLRType docMaker bind = case bind of 
   FunBind fun_ext _ fun_matches _ _ -> do
     let argTypes = docMaker $ ppr $ mg_arg_tys $ mg_ext fun_matches 
     let resType = docMaker $ ppr $ mg_res_ty $ mg_ext fun_matches 
     let matches = map ( unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
     -- let matchPatterns = map m_pats matches
-    let matchResults = catMaybes $ map ( processFunctionMatch docMaker ) matches
-    Just $ intercalate "match" matchResults  
+    matchStrsMb <- mapM ( processFunctionMatch docMaker  ) matches
+    let matchResults = catMaybes matchStrsMb
+    return ( Just $ intercalate "match" matchResults )
   -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
   -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
   AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
-    let subBindStrs = catMaybes $ map ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList abs_binds )
-    Just ( intercalate "split" subBindStrs ) 
-  _ -> Nothing
+    subBindStrsMb <- mapM ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList abs_binds )
+    let subBindStrs = catMaybes subBindStrsMb
+    return ( Just ( intercalate "split" subBindStrs ) )
+  _ -> return ( Nothing )
 
 getHsBindLRName :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Maybe String
 getHsBindLRName docMaker bind = case bind of 
