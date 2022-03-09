@@ -140,40 +140,6 @@ lexprType lexpr = do
     Nothing -> do
       return Nothing
 
-
-processGuardedMatch :: (SDoc -> String) -> LGRHS GhcTc (LHsExpr GhcTc) -> Ghc ( Maybe String )
-processGuardedMatch docMaker match = do
-  case (unpackLocatedData match) of
-    GRHS _ lstmt exprs -> do
-      tMb <- lexprStr docMaker exprs
-      return tMb
-    _ -> return Nothing
-
-processFunctionMatch :: (SDoc -> String) -> Match GhcTc ( LHsExpr GhcTc ) -> Ghc ( Maybe String )
-processFunctionMatch docMaker match = do
-  let rhs = m_grhss match
-  guardRhs <- mapM ( processGuardedMatch docMaker ) ( grhssGRHSs rhs )
-  let rhsStrs = catMaybes guardRhs
-  return ( Just ( intercalate "functMatch" rhsStrs ) )
-
-getHsBindLRType :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Ghc ( Maybe String )
-getHsBindLRType docMaker bind = case bind of 
-  FunBind fun_ext _ fun_matches _ _ -> do
-    let argTypes = docMaker $ ppr $ mg_arg_tys $ mg_ext fun_matches 
-    let resType = docMaker $ ppr $ mg_res_ty $ mg_ext fun_matches 
-    let matches = map ( unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
-    -- let matchPatterns = map m_pats matches
-    matchStrsMb <- mapM ( processFunctionMatch docMaker  ) matches
-    let matchResults = catMaybes matchStrsMb
-    return ( Just $ intercalate "\nmatch\n" matchResults )
-  -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
-  -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
-  AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
-    subBindStrsMb <- mapM ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList abs_binds )
-    let subBindStrs = catMaybes subBindStrsMb
-    return ( Just ( intercalate "split" subBindStrs ) )
-  _ -> return ( Nothing )
-
 getHsBindLRName :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Maybe String
 getHsBindLRName docMaker bind = case bind of 
   -- FunBind _ _ _ _ _ -> Just $ docMaker (ppr bind)
