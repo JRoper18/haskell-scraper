@@ -40,13 +40,32 @@ typecheckSource targetFile =
         t <- typecheckModule p
         return ( tm_typechecked_source t )
 
+typeLocalBindsLocs :: HsLocalBinds GhcTc -> Ghc ( [(SrcSpan, Type)] )
+typeLocalBindsLocs localBinds = do
+  case localBinds of
+    HsValBinds _ deeperValBinds -> do
+      case deeperValBinds of
+        ValBinds _ lvalBindsBag sigs -> do
+          sublocs <- mapM ( typeBindLocs . unpackLocatedData ) (bagToList lvalBindsBag)
+          return $ concat sublocs
+        _ -> return []
+    _ -> return []
 typeStmtLocs :: ExprLStmt GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeStmtLocs lStmt = do
   let stmt = unpackLocatedData lStmt
   let stmtLoc = unpackLocatedLocation lStmt
-  res <- case stmt of
-    BodyStmt _ body sExpr1 sExpr2 -> typeExprLocs body
-  return $ res 
+  case stmt of
+    BodyStmt _ body sExpr1 sExpr2 -> do
+      res <- typeExprLocs body
+      return $ res
+    LetStmt _ locLocalBinds -> do
+      let localBinds = unpackLocatedData locLocalBinds
+      localBindLocs <- typeLocalBindsLocs localBinds
+      return $ localBindLocs
+    LastStmt _ body _ sExpr -> do
+      res <- typeExprLocs body
+      return $ res
+    _ -> return []
 
 typeExprLocs :: LHsExpr GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeExprLocs lexpr = do
@@ -74,10 +93,15 @@ typeExprLocs lexpr = do
                           Just xin -> Just (fst x, xin)
                           Nothing -> Nothing 
                 ) zippedMb
-  let complexSubExprs = case expr of
-                          HsDo _ _ lStmtList -> [] -- todo
-                          _ -> []
-  return $ initialList ++ (catMaybes retMb)
+  complexSubExprs <- case expr of
+                          HsDo _ _ lStmtList -> do
+                            tmp <- mapM typeStmtLocs ( unpackLocatedData lStmtList )
+                            return $ concat tmp
+                          HsLet _ localBinds _ -> do
+                            tmp <- mapM typeLocalBindsLocs ( localBinds )
+                            return $ unpackLocatedData tmp
+                          _ -> return []
+  return $ initialList ++ (catMaybes retMb) ++ (complexSubExprs)
 
   
 lexprStr :: (SDoc -> String) -> LHsExpr GhcTc -> Ghc ( Maybe String )
@@ -85,6 +109,24 @@ lexprStr docMaker lexpr = do
   typeLocs <- typeExprLocs lexpr
   return $ Just $ show $ map ( docMaker . ppr . snd ) typeLocs
   -- return $ Just $ docMaker $ ppr lexpr
+
+typeBindLocs :: HsBindLR GhcTc GhcTc -> Ghc ( [(SrcSpan, Type)] )
+typeBindLocs bind = case bind of 
+  FunBind fun_ext _ fun_matches _ _ -> do
+    let matches = map ( m_grhss . unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
+    let lMatchGuardedRHS = concat ( map ( grhssGRHSs ) matches )
+    let matchGuardedRHS = map unpackLocatedData lMatchGuardedRHS
+    let exprs = ( map (\x -> case x of
+                                GRHS _ lstmt exprs -> exprs
+                      ) matchGuardedRHS )
+    exprTypes <- mapM typeExprLocs exprs
+    return ( concat exprTypes )
+  -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
+  -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
+  AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
+    subBindStrsMb <- mapM ( typeBindLocs . unpackLocatedData ) ( bagToList abs_binds )
+    return $ concat subBindStrsMb
+  _ -> return []
 
 lexprType :: LHsExpr GhcTc -> Ghc ( Maybe Type ) 
 lexprType lexpr = do

@@ -14,6 +14,7 @@ import Bag
 import LibUtil
 import Typed
 import Parsed
+import Core
 
 main :: IO ()
 main = do
@@ -23,26 +24,14 @@ main = do
     let testF = "./test/resources/f.hs"
     parsedSourceOrErr <- parseSource testF
     tcedSource <- typecheckSource testF
-    typedBindsMb <- runGhc (Just libdir) $ do
+    bindTypeLocs <- runGhc (Just libdir) $ do
         hsc_env <- getSession
         
-        mapM ( ( getHsBindLRType docMaker ) . unpackLocatedData ) ( bagToList tcedSource )
-    let typedBinds = catMaybes typedBindsMb
-    dsugar <- runGhc (Just libdir) $ do
-        dflags <- getSessionDynFlags
-        setSessionDynFlags dflags
-        target <- guessTarget testF Nothing
-        setTargets [target]
-        load LoadAllTargets
-        modSum <- getModSummary $ mkModuleName "A"
-        p <- parseModule modSum
-        t <- typecheckModule p
-        d <- desugarModule t
-        return $ mg_binds $ dm_core_module d
-    putStrLn $ docMaker $ ppr $ dsugar
-    let tcStr = docMaker ( ppr ( tcedSource ) )
+        mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList tcedSource )
+    dmod <- coreFromSource testF
+    -- let tcStr = docMaker ( ppr ( tcedSource ) )
     -- putStrLn tcStr
-    mapM_ putStrLn typedBinds
+    -- mapM_ putStrLn typedBinds
     hspec $ do
         describe "parsing" $ do
             it "should parse the source" $ do
@@ -51,12 +40,29 @@ main = do
                         let decls = hsmodDecls ( unpackLocatedData (parsedSource) )
                         let namedDecls = getNamedDecls docMaker decls
                         let showableDecls = ( mapFst ( showDecl docMaker ) namedDecls )
-                        -- print showableDecls
-                        return ()
+                        shouldBe ["f", "f"] (map snd showableDecls)
                     Left res -> printErrMessages res
                 ( isRight parsedSourceOrErr ) `shouldBe` True
-        -- describe "typechecking" $ do
-        --     it "should typecheck files" $ do
+        describe "coring" $ do
+            it "should core files" $ do
+                case parsedSourceOrErr of
+                    Right parsedSource -> do
+                        let modguts = dm_core_module dmod
+                        let binds = mg_binds modguts
+                        let bindsWithNames = map (\x -> (x, bindVar x)) binds
+                        let decls = hsmodDecls ( unpackLocatedData (parsedSource) )
+                        let declNames = map snd ( getNamedDecls docMaker decls )
+                        let keptBindsWithNames = filter (\x -> elem (docMaker (ppr (snd x))) declNames) bindsWithNames
+                        let keptBindNames = map ( docMaker . ppr . snd ) keptBindsWithNames
+                        let keptBinds = map fst keptBindsWithNames
+                        shouldBe ["f"] keptBindNames
+                    Left res -> printErrMessages res
+        describe "typing" $ do
+            it "should type files" $ do
+                mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
+
+
+
 
                 
 
