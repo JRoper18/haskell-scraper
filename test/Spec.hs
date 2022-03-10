@@ -15,6 +15,7 @@ import LibUtil
 import Typed
 import Parsed
 import Core
+import Data.Aeson
 
 main :: IO ()
 main = do
@@ -62,8 +63,6 @@ main = do
                 mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
                 newF <- typeAnnotateSource testF "A"
                 putStrLn newF
-
-
 
 
                 

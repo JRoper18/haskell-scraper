@@ -45,7 +45,7 @@ spanToLineInserts :: RealSrcSpan -> String -> [(Int, String)]
 spanToLineInserts span ins = do
   let s = (srcSpanStartCol span)-1
   let e = (srcSpanEndCol span)-1
-  [(s, "{"), (s, ins), (e, "}")]
+  [(s, "("), (s, ins), (e, ")")]
 
 typeAnnotateSource :: String -> String -> IO ( String )
 typeAnnotateSource targetFile moduleName =
@@ -68,7 +68,8 @@ typeAnnotateSource targetFile moduleName =
                 concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
               )) [0..(length fileLines - 1)]
       let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
-      return $ intercalate "\n" insertedLines
+      let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
+      return $ intercalate "\n" commentedLines
 typeIpBindLocs :: LIPBind GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeIpBindLocs lipBind = do
   case (unpackLocatedData lipBind) of
