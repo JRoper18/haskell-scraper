@@ -45,7 +45,7 @@ spanToLineInserts :: RealSrcSpan -> String -> [(Int, String)]
 spanToLineInserts span ins = do
   let s = (srcSpanStartCol span)-1
   let e = (srcSpanEndCol span)-1
-  [(s, "<<"), (s, ins), (e, ">>")]
+  [(s, "{"), (s, ins), (e, "}")]
 
 typeAnnotateSource :: String -> String -> IO ( String )
 typeAnnotateSource targetFile moduleName =
@@ -69,7 +69,11 @@ typeAnnotateSource targetFile moduleName =
               )) [0..(length fileLines - 1)]
       let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
       return $ intercalate "\n" insertedLines
-
+typeIpBindLocs :: LIPBind GhcTc -> Ghc ( [(SrcSpan, Type)] )
+typeIpBindLocs lipBind = do
+  case (unpackLocatedData lipBind) of
+    IPBind _ _ lexpr -> typeExprLocs lexpr
+    _   -> return []
 typeLocalBindsLocs :: HsLocalBinds GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeLocalBindsLocs localBinds = do
   case localBinds of
@@ -78,7 +82,18 @@ typeLocalBindsLocs localBinds = do
         ValBinds _ lvalBindsBag sigs -> do
           sublocs <- mapM ( typeBindLocs . unpackLocatedData ) (bagToList lvalBindsBag)
           return $ concat sublocs
-        _ -> return []
+        XValBindsLR xxValBinds -> do
+          case xxValBinds of 
+            NValBinds bindList sigs -> do
+              let sublists = concatMap ( bagToList . snd ) (bindList)
+              tmp <- mapM ( typeBindLocs . unpackLocatedData ) sublists
+              return $ concat tmp
+    HsIPBinds _ lIpBinds -> do
+        case lIpBinds of 
+          IPBinds _ bindList -> do
+            tmp <- mapM typeIpBindLocs bindList
+            return $ concat tmp
+          _ -> return []
     _ -> return []
 typeStmtLocs :: ExprLStmt GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeStmtLocs lStmt = do
@@ -86,15 +101,12 @@ typeStmtLocs lStmt = do
   let stmtLoc = unpackLocatedLocation lStmt
   case stmt of
     BodyStmt _ body sExpr1 sExpr2 -> do
-      res <- typeExprLocs body
-      return $ res
+      typeExprLocs body
     LetStmt _ locLocalBinds -> do
       let localBinds = unpackLocatedData locLocalBinds
-      localBindLocs <- typeLocalBindsLocs localBinds
-      return $ localBindLocs
+      typeLocalBindsLocs localBinds
     LastStmt _ body _ sExpr -> do
-      res <- typeExprLocs body
-      return $ res
+      typeExprLocs body
     _ -> return []
 
 typeExprLocs :: LHsExpr GhcTc -> Ghc ( [(SrcSpan, Type)] )
@@ -141,22 +153,24 @@ lexprStr docMaker lexpr = do
   -- return $ Just $ docMaker $ ppr lexpr
 
 typeBindLocs :: HsBindLR GhcTc GhcTc -> Ghc ( [(SrcSpan, Type)] )
-typeBindLocs bind = case bind of
-  FunBind fun_ext _ fun_matches _ _ -> do
-    let matches = map ( m_grhss . unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
-    let lMatchGuardedRHS = concat ( map ( grhssGRHSs ) matches )
-    let matchGuardedRHS = map unpackLocatedData lMatchGuardedRHS
-    let exprs = ( map (\x -> case x of
-                                GRHS _ lstmt exprs -> exprs
-                      ) matchGuardedRHS )
-    exprTypes <- mapM typeExprLocs exprs
-    return ( concat exprTypes )
-  -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
-  -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
-  AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
-    subBindStrsMb <- mapM ( typeBindLocs . unpackLocatedData ) ( bagToList abs_binds )
-    return $ concat subBindStrsMb
-  _ -> return []
+typeBindLocs bind = do
+  case bind of
+    FunBind fun_ext _ fun_matches _ _ -> do
+      let matches = map ( m_grhss . unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
+      let lMatchGuardedRHS = concatMap ( grhssGRHSs ) matches 
+      let matchGuardedRHS = map unpackLocatedData lMatchGuardedRHS
+      let exprs = ( map (\x -> case x of
+                                  GRHS _ lstmt exprs -> exprs
+                        ) matchGuardedRHS )
+      exprTypes <- mapM typeExprLocs exprs
+      return ( concat exprTypes )
+    -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
+    VarBind _ _ var_rhs _ -> do
+      typeExprLocs var_rhs
+    AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
+      subBindStrsMb <- mapM ( typeBindLocs . unpackLocatedData ) ( bagToList abs_binds )
+      return $ concat subBindStrsMb
+    _ -> return []
 
 lexprType :: LHsExpr GhcTc -> Ghc ( Maybe Type )
 lexprType lexpr = do
