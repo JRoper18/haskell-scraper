@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 module Typed where
 
 import GHC
@@ -25,20 +27,48 @@ import GhcPlugins
 import Data.Aeson
 import GHC.Generics
 
-typecheckSource :: String -> IO ( TypecheckedSource )
-typecheckSource targetFile =
+typecheckSource :: String -> String -> IO ( TypecheckedSource )
+typecheckSource targetFile moduleName =
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
-      fileContents <- readFile targetFile
       runGhc (Just libdir) $ do
         dflags <- getSessionDynFlags
         setSessionDynFlags dflags
         target <- guessTarget targetFile Nothing
         setTargets [target]
         load LoadAllTargets
-        modSum <- getModSummary $ mkModuleName "A"
+        modSum <- getModSummary $ mkModuleName moduleName
         p <- parseModule modSum
         t <- typecheckModule p
         return ( tm_typechecked_source t )
+
+spanToLineInserts :: RealSrcSpan -> String -> [(Int, String)]
+spanToLineInserts span ins = do
+  let s = (srcSpanStartCol span)-1
+  let e = (srcSpanEndCol span)-1
+  [(s, "<<"), (s, ins), (e, ">>")]
+
+typeAnnotateSource :: String -> String -> IO ( String )
+typeAnnotateSource targetFile moduleName =
+  defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
+    fileContents <- readFile targetFile
+    let fileLines = lines fileContents
+    typecheckedSource <- typecheckSource targetFile moduleName
+    runGhc (Just libdir) $ do
+      dflags <- getSessionDynFlags
+      let docMaker = showSDoc dflags
+      bindTypeLocsMon <- mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList typecheckedSource )
+      let unsafeBindTypeLocs = filter ( isOneLineSpan . fst ) ( concat bindTypeLocsMon )
+      let bindTypeLocs = [ (rss, t) | (RealSrcSpan rss, t) <- unsafeBindTypeLocs ]
+      let sortedTypeLocs = sortBy (\x y -> compare (fst x) (fst y)) bindTypeLocs
+      let lineLocs = map ( srcLocLine . realSrcSpanStart . fst ) sortedTypeLocs
+      -- let groupedByLineTypeLocs = groupBy (\x y -> (srcSpanStartLine( fst x )) == (srcSpanStartLine (fst x))) sortedTypeLocs
+
+      let lineInserts = map (\x -> ((srcSpanStartLine ( fst x), spanToLineInserts (fst x) (docMaker (ppr (snd x)))))) sortedTypeLocs
+      let lineInsertsPerLine = map (\i -> (
+                concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
+              )) [0..(length fileLines - 1)]
+      let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
+      return $ intercalate "\n" insertedLines
 
 typeLocalBindsLocs :: HsLocalBinds GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeLocalBindsLocs localBinds = do
@@ -87,11 +117,11 @@ typeExprLocs lexpr = do
                     _ -> []
   subExprTypes <- mapM lexprType subExprs
   let subExprLocs = map unpackLocatedLocation subExprs
-  
+
   let zippedMb = (zip subExprLocs subExprTypes)
-  let retMb = map ( \x -> case (snd x) of 
+  let retMb = map ( \x -> case (snd x) of
                           Just xin -> Just (fst x, xin)
-                          Nothing -> Nothing 
+                          Nothing -> Nothing
                 ) zippedMb
   complexSubExprs <- case expr of
                           HsDo _ _ lStmtList -> do
@@ -103,7 +133,7 @@ typeExprLocs lexpr = do
                           _ -> return []
   return $ initialList ++ (catMaybes retMb) ++ (complexSubExprs)
 
-  
+
 lexprStr :: (SDoc -> String) -> LHsExpr GhcTc -> Ghc ( Maybe String )
 lexprStr docMaker lexpr = do
   typeLocs <- typeExprLocs lexpr
@@ -111,7 +141,7 @@ lexprStr docMaker lexpr = do
   -- return $ Just $ docMaker $ ppr lexpr
 
 typeBindLocs :: HsBindLR GhcTc GhcTc -> Ghc ( [(SrcSpan, Type)] )
-typeBindLocs bind = case bind of 
+typeBindLocs bind = case bind of
   FunBind fun_ext _ fun_matches _ _ -> do
     let matches = map ( m_grhss . unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
     let lMatchGuardedRHS = concat ( map ( grhssGRHSs ) matches )
@@ -128,7 +158,7 @@ typeBindLocs bind = case bind of
     return $ concat subBindStrsMb
   _ -> return []
 
-lexprType :: LHsExpr GhcTc -> Ghc ( Maybe Type ) 
+lexprType :: LHsExpr GhcTc -> Ghc ( Maybe Type )
 lexprType lexpr = do
   hsc_env <- getSession
   exprAndMsgs <- liftIO ( deSugarExpr hsc_env lexpr )
@@ -136,17 +166,17 @@ lexprType lexpr = do
   case exprMb of
     Just coreExpr -> do
       let t = CoreUtils.exprType coreExpr
-      return ( Just $ t ) 
+      return ( Just $ t )
     Nothing -> do
       return Nothing
 
 getHsBindLRName :: (SDoc -> String) -> HsBindLR GhcTc GhcTc -> Maybe String
-getHsBindLRName docMaker bind = case bind of 
+getHsBindLRName docMaker bind = case bind of
   -- FunBind _ _ _ _ _ -> Just $ docMaker (ppr bind)
   -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
   -- VarBind _ _ _ _ -> Just $ docMaker (ppr bind)
   AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
     let subVals = map abe_mono abs_exports
-    Just ( intercalate "\n" (map ( docMaker . ppr ) subVals ) ) 
+    Just ( intercalate "\n" (map ( docMaker . ppr ) subVals ) )
   _ -> Nothing
 

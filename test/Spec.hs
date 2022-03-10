@@ -22,8 +22,8 @@ main = do
         getSessionDynFlags
     let docMaker = showSDoc dflags
     let testF = "./test/resources/f.hs"
-    parsedSourceOrErr <- parseSource testF
-    tcedSource <- typecheckSource testF
+    parsedSourceOrErr <- parseSource testF 
+    tcedSource <- typecheckSource testF "A"
     bindTypeLocs <- runGhc (Just libdir) $ do
         hsc_env <- getSession
         
@@ -60,6 +60,8 @@ main = do
         describe "typing" $ do
             it "should type files" $ do
                 mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
+                newF <- typeAnnotateSource testF "A"
+                putStrLn newF
 
 
 

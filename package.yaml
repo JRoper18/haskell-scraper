@@ -21,11 +21,12 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
-- ghc >= 9.2.1
+- ghc == 8.10.17
 - ghc-paths
 - hspec >= 2.2.0
 - aeson
 - bytestring
+- optparse-applicative == 0.17.0.0
 
 extra-deps:
 - 'ghc-paths-0.1.0.12@sha256:5b99848c5d6e8ae3105aee803e6e67100affca05d0cbe09b4e9a44a9ddf32a81,657'
