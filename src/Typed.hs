@@ -26,8 +26,7 @@ import GHC.Unicode
 import GhcPlugins
 import Data.Aeson
 import GHC.Generics
-import Text.Regex.TDFA
-
+import Text.Regex.Posix
 typecheckSource :: String -> String -> IO ( TypecheckedSource )
 typecheckSource targetFile moduleName =
     defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
@@ -51,9 +50,9 @@ spanToLineInserts span ins = do
 
 moduleNameFromSource :: String -> Maybe String 
 moduleNameFromSource source = do
-  let regex = "module ([A-Za-z\\.]+) where"
+  let regex = "module ([A-Za-z\\.]+)( \\((\n|.)*?\\))? where"
   let (beforeText, match, afterText, subMatches) = (source =~ regex) :: (String, String, String, [String])
-  if not (length subMatches == 1) then
+  if match == "" then
     Nothing
   else 
     Just ( head subMatches )

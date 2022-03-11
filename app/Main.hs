@@ -10,6 +10,7 @@ import Data.Semigroup ((<>))
 import System.Environment
 import Lib
 import Parsed
+import Data.Maybe
 import Typed
 
 
@@ -48,6 +49,7 @@ mainHelp ( MainArgs "parse" outF i ) = do
 
 mainHelp ( MainArgs "type" outF i ) = do
   let inFs = words i
-  mapM_ (typeAnnotateSource) inFs 
+  commentedFs <- mapM (typeAnnotateSource) inFs 
+  mapM_ (appendFile outF) (catMaybes commentedFs)
 
 mainHelp _ = return()

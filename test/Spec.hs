@@ -61,6 +61,10 @@ main = do
                     Left res -> printErrMessages res
         describe "typing" $ do
             it "should be able to do grab the module name" $ do
+                let t2 = "module B (\
+                \   f\
+                \) where"
+                shouldBe (moduleNameFromSource t2) (Just "B")
                 shouldBe (moduleNameFromSource fileContents) (Just "A")
             it "should type files" $ do
                 mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
