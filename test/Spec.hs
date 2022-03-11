@@ -23,6 +23,7 @@ main = do
         getSessionDynFlags
     let docMaker = showSDoc dflags
     let testF = "./test/resources/f.hs"
+    fileContents <- readFile testF
     parsedSourceOrErr <- parseSource testF 
     tcedSource <- typecheckSource testF "A"
     bindTypeLocs <- runGhc (Just libdir) $ do
@@ -59,10 +60,17 @@ main = do
                         shouldBe ["f"] keptBindNames
                     Left res -> printErrMessages res
         describe "typing" $ do
+            it "should be able to do grab the module name" $ do
+                shouldBe (moduleNameFromSource fileContents) (Just "A")
             it "should type files" $ do
                 mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
-                newF <- typeAnnotateSource testF "A"
-                putStrLn newF
+                newFMb <- typeAnnotateSource testF
+                shouldBe (isJust newFMb) True 
+                case newFMb of
+                    Just newF -> do
+                        putStrLn newF
+                    Nothing ->
+                        return ()
 
 
                 

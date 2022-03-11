@@ -43,6 +43,8 @@ library
     , ghc-paths
     , hspec >=2.2.0
     , optparse-applicative <=0.17.0.0
+    , regex-base
+    , regex-tdfa <=1.3.1.2
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
   default-language: Haskell2010
@@ -64,6 +66,8 @@ executable HaskellScraper-exe
     , ghc-paths
     , hspec >=2.2.0
     , optparse-applicative <=0.17.0.0
+    , regex-base
+    , regex-tdfa <=1.3.1.2
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
   default-language: Haskell2010
@@ -86,6 +90,8 @@ test-suite HaskellScraper-test
     , ghc-paths
     , hspec >=2.2.0
     , optparse-applicative <=0.17.0.0
+    , regex-base
+    , regex-tdfa <=1.3.1.2
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
   default-language: Haskell2010

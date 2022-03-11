@@ -10,6 +10,7 @@ import Data.Semigroup ((<>))
 import System.Environment
 import Lib
 import Parsed
+import Typed
 
 
 data MainArgs = MainArgs
@@ -47,6 +48,6 @@ mainHelp ( MainArgs "parse" outF i ) = do
 
 mainHelp ( MainArgs "type" outF i ) = do
   let inFs = words i
-  mapM_ (processSourceFile outF) inFs
+  mapM_ (typeAnnotateSource) inFs 
 
 mainHelp _ = return()

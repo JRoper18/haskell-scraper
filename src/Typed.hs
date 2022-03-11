@@ -5,7 +5,7 @@ module Typed where
 import GHC
 import Outputable
 import GHC.Paths ( libdir )
-import DynFlags
+import DynFlags ( defaultFatalMessager, defaultFlushOut )
 import Data.Dynamic
 import System.Posix.Internals (newFilePath)
 import ErrUtils
@@ -26,6 +26,7 @@ import GHC.Unicode
 import GhcPlugins
 import Data.Aeson
 import GHC.Generics
+import Text.Regex.TDFA
 
 typecheckSource :: String -> String -> IO ( TypecheckedSource )
 typecheckSource targetFile moduleName =
@@ -47,29 +48,43 @@ spanToLineInserts span ins = do
   let e = (srcSpanEndCol span)-1
   [(s, "("), (s, ins), (e, ")")]
 
-typeAnnotateSource :: String -> String -> IO ( String )
-typeAnnotateSource targetFile moduleName =
+
+moduleNameFromSource :: String -> Maybe String 
+moduleNameFromSource source = do
+  let regex = "module ([A-Za-z\\.]+) where"
+  let (beforeText, match, afterText, subMatches) = (source =~ regex) :: (String, String, String, [String])
+  if not (length subMatches == 1) then
+    Nothing
+  else 
+    Just ( head subMatches )
+
+typeAnnotateSource :: String -> IO ( Maybe String )
+typeAnnotateSource targetFile =
   defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
     fileContents <- readFile targetFile
-    let fileLines = lines fileContents
-    typecheckedSource <- typecheckSource targetFile moduleName
-    runGhc (Just libdir) $ do
-      dflags <- getSessionDynFlags
-      let docMaker = showSDoc dflags
-      bindTypeLocsMon <- mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList typecheckedSource )
-      let unsafeBindTypeLocs = filter ( isOneLineSpan . fst ) ( concat bindTypeLocsMon )
-      let bindTypeLocs = [ (rss, t) | (RealSrcSpan rss, t) <- unsafeBindTypeLocs ]
-      let sortedTypeLocs = sortBy (\x y -> compare (fst x) (fst y)) bindTypeLocs
-      let lineLocs = map ( srcLocLine . realSrcSpanStart . fst ) sortedTypeLocs
-      -- let groupedByLineTypeLocs = groupBy (\x y -> (srcSpanStartLine( fst x )) == (srcSpanStartLine (fst x))) sortedTypeLocs
+    let moduleNameMb = moduleNameFromSource fileContents
+    case moduleNameMb of
+      Just moduleName -> do
+        let fileLines = lines fileContents
+        typecheckedSource <- typecheckSource targetFile moduleName
+        runGhc (Just libdir) $ do
+          dflags <- getSessionDynFlags
+          let docMaker = showSDoc dflags
+          bindTypeLocsMon <- mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList typecheckedSource )
+          let unsafeBindTypeLocs = filter ( isOneLineSpan . fst ) ( concat bindTypeLocsMon )
+          let bindTypeLocs = [ (rss, t) | (RealSrcSpan rss, t) <- unsafeBindTypeLocs ]
+          let sortedTypeLocs = sortBy (\x y -> compare (fst x) (fst y)) bindTypeLocs
+          let lineLocs = map ( srcLocLine . realSrcSpanStart . fst ) sortedTypeLocs
+          -- let groupedByLineTypeLocs = groupBy (\x y -> (srcSpanStartLine( fst x )) == (srcSpanStartLine (fst x))) sortedTypeLocs
 
-      let lineInserts = map (\x -> ((srcSpanStartLine ( fst x), spanToLineInserts (fst x) (docMaker (ppr (snd x)))))) sortedTypeLocs
-      let lineInsertsPerLine = map (\i -> (
-                concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
-              )) [0..(length fileLines - 1)]
-      let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
-      let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
-      return $ intercalate "\n" commentedLines
+          let lineInserts = map (\x -> ((srcSpanStartLine ( fst x), spanToLineInserts (fst x) (docMaker (ppr (snd x)))))) sortedTypeLocs
+          let lineInsertsPerLine = map (\i -> (
+                    concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
+                  )) [0..(length fileLines - 1)]
+          let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
+          let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
+          return $ Just $ intercalate "\n" commentedLines
+      Nothing -> return Nothing
 typeIpBindLocs :: LIPBind GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeIpBindLocs lipBind = do
   case (unpackLocatedData lipBind) of
