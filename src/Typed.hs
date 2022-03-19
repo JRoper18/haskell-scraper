@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
+
 module Typed where
 
 import GHC
@@ -27,19 +28,21 @@ import GhcPlugins
 import Data.Aeson
 import GHC.Generics
 import Text.Regex.Posix
-typecheckSource :: String -> String -> IO ( TypecheckedSource )
+
+typecheckSources :: [String] -> String -> Ghc (TypecheckedSource)
+typecheckSources targets moduleName = do
+  dflags <- getSessionDynFlags
+  setSessionDynFlags dflags
+  targets <- mapM (\t -> guessTarget t Nothing) targets
+  setTargets targets
+  load LoadAllTargets
+  modSum <- getModSummary $ mkModuleName moduleName
+  p <- parseModule modSum
+  t <- typecheckModule p
+  return ( tm_typechecked_source t )
+typecheckSource :: String -> String -> Ghc ( TypecheckedSource )
 typecheckSource targetFile moduleName =
-    defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
-      runGhc (Just libdir) $ do
-        dflags <- getSessionDynFlags
-        setSessionDynFlags dflags
-        target <- guessTarget targetFile Nothing
-        setTargets [target]
-        load LoadAllTargets
-        modSum <- getModSummary $ mkModuleName moduleName
-        p <- parseModule modSum
-        t <- typecheckModule p
-        return ( tm_typechecked_source t )
+  typecheckSources [targetFile] moduleName
 
 spanToLineInserts :: RealSrcSpan -> String -> [(Int, String)]
 spanToLineInserts span ins = do
@@ -56,17 +59,16 @@ moduleNameFromSource source = do
     Nothing
   else 
     Just ( head subMatches )
-
-typeAnnotateSource :: String -> IO ( Maybe String )
-typeAnnotateSource targetFile =
+typeAnnotateModuleInSources :: [String] -> String -> IO ( Maybe String )
+typeAnnotateModuleInSources moduleFiles targetFile  = 
   defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
     fileContents <- readFile targetFile
-    let moduleNameMb = moduleNameFromSource fileContents
-    case moduleNameMb of
-      Just moduleName -> do
-        let fileLines = lines fileContents
-        typecheckedSource <- typecheckSource targetFile moduleName
-        runGhc (Just libdir) $ do
+    let fileLines = lines fileContents
+    runGhc (Just libdir) $ do
+      let moduleNameMb = moduleNameFromSource fileContents
+      case moduleNameMb of
+        Just moduleName -> do
+          typecheckedSource <- typecheckSources moduleFiles moduleName
           dflags <- getSessionDynFlags
           let docMaker = showSDoc dflags
           bindTypeLocsMon <- mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList typecheckedSource )
@@ -83,7 +85,11 @@ typeAnnotateSource targetFile =
           let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
           let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
           return $ Just $ intercalate "\n" commentedLines
-      Nothing -> return Nothing
+        Nothing -> return Nothing
+
+typeAnnotateSource :: String -> IO ( Maybe String )
+typeAnnotateSource targetFile = typeAnnotateModuleInSources [targetFile] targetFile
+  
 typeIpBindLocs :: LIPBind GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeIpBindLocs lipBind = do
   case (unpackLocatedData lipBind) of

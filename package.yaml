@@ -6,6 +6,13 @@ author:              "Author name here"
 maintainer:          "example@example.com"
 copyright:           "2022 Author name here"
 
+
+extra-include-dirs:
+- /home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include
+
+extra-lib-dirs:
+- /home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include
+ 
 extra-source-files:
 - README.md
 - ChangeLog.md
@@ -32,6 +39,7 @@ dependencies:
 - template-haskell <= 2.16.0.0
 - regex-posix <= 0.96.0.1
 - regex-base
+- syb <= 0.7.2.1
 library:
   source-dirs: src
 
@@ -55,5 +63,6 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     - -XFlexibleInstances
+    - -XDeriveDataTypeable
     dependencies:
     - HaskellScraper

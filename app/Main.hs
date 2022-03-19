@@ -12,7 +12,7 @@ import Lib
 import Parsed
 import Data.Maybe
 import Typed
-
+import Data.List
 
 data MainArgs = MainArgs
   { mode      :: String
@@ -49,7 +49,19 @@ mainHelp ( MainArgs "parse" outF i ) = do
 
 mainHelp ( MainArgs "type" outF i ) = do
   let inFs = words i
-  commentedFs <- mapM (typeAnnotateSource) inFs 
-  mapM_ (appendFile outF) (catMaybes commentedFs)
+  let hsFiles = filter (isSuffixOf ".hs") inFs
+  mapM_ (typeProcessSourceFile outF hsFiles) hsFiles 
 
 mainHelp _ = return()
+
+typeProcessSourceFile :: String -> [String] -> String -> IO ()
+typeProcessSourceFile outF inFs inF = do
+  print inF
+  annotatedMb <- typeAnnotateModuleInSources inFs inF
+  case annotatedMb of
+    Just annotated -> appendFile outF annotated
+    Nothing -> do
+      inContents <- readFile inF
+      appendFile outF (inContents)
+
+

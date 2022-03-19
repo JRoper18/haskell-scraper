@@ -29,11 +29,14 @@ library
       Lib
       LibUtil
       Parsed
+      TH
       Typed
   other-modules:
       Paths_HaskellScraper
   hs-source-dirs:
       src
+  extra-lib-dirs:
+      /home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include
   build-depends:
       aeson
     , base >=4.7 && <5
@@ -45,6 +48,7 @@ library
     , optparse-applicative <=0.17.0.0
     , regex-base
     , regex-posix <=0.96.0.1
+    , syb <=0.7.2.1
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
   default-language: Haskell2010
@@ -56,6 +60,8 @@ executable HaskellScraper-exe
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  extra-lib-dirs:
+      /home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include
   build-depends:
       HaskellScraper
     , aeson
@@ -68,6 +74,7 @@ executable HaskellScraper-exe
     , optparse-applicative <=0.17.0.0
     , regex-base
     , regex-posix <=0.96.0.1
+    , syb <=0.7.2.1
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
   default-language: Haskell2010
@@ -79,7 +86,9 @@ test-suite HaskellScraper-test
       Paths_HaskellScraper
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -XFlexibleInstances
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -XFlexibleInstances -XDeriveDataTypeable
+  extra-lib-dirs:
+      /home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include
   build-depends:
       HaskellScraper
     , aeson
@@ -92,6 +101,7 @@ test-suite HaskellScraper-test
     , optparse-applicative <=0.17.0.0
     , regex-base
     , regex-posix <=0.96.0.1
+    , syb <=0.7.2.1
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
   default-language: Haskell2010

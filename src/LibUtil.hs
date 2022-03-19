@@ -1,19 +1,15 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE PackageImports #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module LibUtil where
 
-import "aeson" Data.Aeson (ToJSON)
-import "aeson" Data.Aeson.TH (deriveToJSON, defaultOptions)
-import "base" GHC.Generics (Generic)
-import "generic-deriving" Generics.Deriving.TH (deriveAll0)
-import "th-reify-many" Language.Haskell.TH.ReifyMany
 import GHC
 import Data.List
-import Language.Haskell.TH.Syntax
 import GHC.Generics
+import Data.Data
+import Json
+import Data.Generics.Text
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -33,16 +29,26 @@ insertMultiple initial locsAndInts = do
     let allIns = foldl (uncurry . insertAtLoc) initial sLocs
     allIns
 
--- $(do -- Don't bother trying to define a Generic instance for Int
---     let genPred n = n /= ''Int
---     exprTNameMb <- lookupTypeName "LHsBindLR GhcTc GhcTc"
---     case exprTNameMb of
---         Just exprTName -> do
---             genericInsts <- reifyManyWithoutInstances ''Generic [exprTName] genPred
---                             >>= traverse deriveAll0
---             toJSONInsts  <- reifyManyWithoutInstances ''ToJSON [exprTName] (const True)
---                             >>= traverse (deriveToJSON defaultOptions)
---             pure $ concat $ genericInsts ++ toJSONInsts
---         _ -> return []
---     )
-        
+
+readData :: Data a => String -> Maybe a
+readData s = do 
+    let readS = gread s
+    if null readS then
+        Nothing 
+    else 
+        Just $ fst $ head readS
+showData :: Data a => a -> String
+-- showData (s::GHC.SrcSpan) = do
+    
+showData d = do
+    gshow d
+    -- let constr = show $ toConstr d
+    -- let subShown = gmapQ (showData) d
+    -- let srcSpanMb = dataCast1 SrcSpan d
+    -- case srcSpanMb of
+    --     Just srcSpan -> show $ renderJSON $ json srcSpan
+    --     Nothing -> do
+    --         if null subShown then
+    --             constr
+    --         else 
+    --             constr ++ " (" ++ (intercalate ")(" subShown) ++ ") "

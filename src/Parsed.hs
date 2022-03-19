@@ -24,11 +24,17 @@ import GHC.Unicode
 import GhcPlugins
 import Data.Aeson
 import GHC.Generics
+import TH
 
+
+showOutputable :: Outputable a => (SDoc -> String) -> a -> String
+showOutputable docMaker decl = docMaker ( ppr ( decl ) )
 
 showDecl :: (SDoc -> String) -> GHC.LHsDecl ( GHC.GhcPs ) -> String
 showDecl docMaker decl = do
-    let strList = docMaker ( ppr ( decl ) )
+    -- let strList = docMaker ( ppr ( decl ) )
+    -- let strList = unpack $ encode decl
+    let strList = showData decl
     strList
 
 keepDecl :: GHC.LHsDecl ( GHC.GhcPs ) -> Bool
