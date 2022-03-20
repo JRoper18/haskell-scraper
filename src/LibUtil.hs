@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use <$>" #-}
 
 module LibUtil where
 
@@ -15,8 +17,9 @@ import Data.Generics
 import Control.Monad (mzero)
 import Text.Read.Lex (hsLex)
 import FastString
-import Language.Haskell.TH.Syntax (OccName(OccName))
 import OccName (mkVarOcc, OccName)
+import Data.Aeson (Value(Bool))
+import Bag
 
 srcSpanMacro = "{abstract:SrcSpan}"
 faststringMacro = "{abstract:FastString}"
@@ -45,22 +48,41 @@ greadAbstract = readP_to_S greadAbstract'
 
   -- Helper for recursive read
 greadAbstract' :: Data a' => ReadP a'
-greadAbstract' = extR (extR (extR (extR allButString srcSpanCase) stringCase) faststringCase) occNameCase where
+greadAbstract' = extR (extR (extR (extR (extR allButString srcSpanCase) stringCase) faststringCase) occNameCase) bagCase where
 
     -- A specific case for strings
-
-    srcSpanCase :: ReadP SrcSpan 
+    -- boolCase :: ReadP Bool = do
+    --     str <- choice [string "False", string "True"]
+    --     if str == "True" then return True else return False
+        
+    bagCase :: ReadP (Bag (GenLocated SrcSpan (HsBindLR (GhcPass 'Parsed) (GhcPass 'Parsed))))
+    bagCase = do
+        openParen
+        string "{abstract:Bag"
+        skipUntil (== '}')
+        char '}'    
+        l <- greadAbstract'
+        closeParen
+        return $ listToBag l
+        
+    srcSpanCase :: ReadP SrcSpan
     srcSpanCase = do
+        openParen
         string srcSpanMacro
-        return noSrcSpan 
-    faststringCase :: ReadP FastString 
+        closeParen
+        return noSrcSpan
+    faststringCase :: ReadP FastString
     faststringCase = do
+        openParen
         string faststringMacro
+        closeParen
         return $ mkFastString "errorStr"
-    
-    occNameCase :: ReadP OccName.OccName
+
+    occNameCase :: ReadP OccName
     occNameCase = do
+        openParen
         string occNameMacro
+        closeParen
         return $ mkVarOcc "unknown occname"
 
     stringCase :: ReadP String
@@ -75,27 +97,46 @@ greadAbstract' = extR (extR (extR (extR allButString srcSpanCase) stringCase) fa
     -- The generic default for gread
     allButString = do
         -- Drop "  (  "
-        skipSpaces                     -- Discard leading space
-        _ <- char '('                  -- Parse '('
-        skipSpaces                     -- Discard following space
+        openParen
                 -- Do the real work
-        str <- parseConstr            -- Get a lexeme for the constructor
-        con  <- str2con str            -- Convert it to a Constr (may fail)
-        x    <- fromConstrM greadAbstract' con -- Read the children
 
+        x <- choice [buildGeneric, greadAbstract']
                         -- Drop "  )  "
-        skipSpaces                     -- Discard leading space
-        _ <- char ')'                  -- Parse ')'
-        skipSpaces                     -- Discard following space
-
+        closeParen
         return x
 
     -- Turn string into constructor driven by the requested result type,
     -- failing in the monad if it isn't a constructor of this data type
+
+    buildGeneric = do
+        str <- parseConstr            -- Get a lexeme for the constructor
+        con  <- str2con str            -- Convert it to a Constr (may fail)
+        fromConstrM greadAbstract' con -- Read the children
+
     str2con :: String -> ReadP Constr
     str2con = maybe mzero return
             . readConstr myDataType
 
+    openParen :: ReadP ()
+    openParen = do
+        skipSpaces                     -- Discard leading space
+        _ <- char '('                  -- Parse '('
+        skipSpaces                     -- Discard following space
+    
+    closeParen :: ReadP ()
+    closeParen = do
+        skipSpaces                     -- Discard leading space
+        _ <- char ')'                  -- Parse ')'
+        skipSpaces                     -- Discard following space
+
+    skipUntil :: (Char -> Bool) -> ReadP ()
+    skipUntil pred = do
+        s <- look
+        skip s
+        where
+            skip (c:s) | (not . pred) c = do _ <- get; skip s
+            skip _                 = do return ()
+ 
     -- Get a Constr's string at the front of an input string
     parseConstr :: ReadP String
     parseConstr =

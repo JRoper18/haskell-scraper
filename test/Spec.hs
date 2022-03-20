@@ -57,6 +57,8 @@ main = do
                 shouldBe (serializeId d1) (Just d1)
                 let d3 = "testStr"
                 shouldBe (serializeId d3) (Just d3)
+                let sList = ["a", "b", "c"]
+                shouldBe (serializeId sList) (Just sList)
             it "should work on weird types" $ do
                 let d2 = noSrcSpan
                 shouldBe (serializeId d2) (Just d2) 
@@ -66,9 +68,15 @@ main = do
 
             it "should work on composite weirdness" $ do
                 let d5 = mkRdrUnqual (mkVarOcc "unknown occname") :: RdrName
-                putStrLn (showData d5)
                 let pshowId2 = pshowSerializeId (docMaker . ppr) :: RdrName -> Maybe String
                 shouldBe (pshowId2 d5) (Just (docMaker (ppr d5)))
+                let d6 = (L noSrcSpan d5)
+                let pshowId3 = pshowSerializeId (docMaker . ppr) :: Located RdrName -> Maybe String
+                shouldBe (pshowId3 d6) (Just (docMaker (ppr d6)))
+                -- let bag = listToBag ["a", "b", "c"]
+                -- putStrLn (showData bag)
+                -- let pshowId4 = pshowSerializeId (docMaker . ppr)
+                -- shouldBe (pshowId4 bag) (Just (docMaker (ppr bag)))
         describe "parsing" $ do
             it "should parse the source" $ do
                 ( isRight parsedSourceOrErr ) `shouldBe` True
@@ -121,8 +129,4 @@ main = do
                         return ()
                     Nothing ->
                         return ()
-
-
-                
-
 
