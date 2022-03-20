@@ -17,7 +17,7 @@ import Data.Generics
 import Control.Monad (mzero)
 import Text.Read.Lex (hsLex)
 import FastString
-import OccName (mkVarOcc, OccName)
+import OccName (mkVarOcc, OccName, occNameString)
 import Data.Aeson (Value(Bool))
 import Bag
 
@@ -54,17 +54,17 @@ greadAbstract' = extR (extR (extR (extR (extR allButString srcSpanCase) stringCa
     -- boolCase :: ReadP Bool = do
     --     str <- choice [string "False", string "True"]
     --     if str == "True" then return True else return False
-        
+
     bagCase :: ReadP (Bag (GenLocated SrcSpan (HsBindLR (GhcPass 'Parsed) (GhcPass 'Parsed))))
     bagCase = do
         openParen
         string "{abstract:Bag"
         skipUntil (== '}')
-        char '}'    
+        char '}'
         l <- greadAbstract'
         closeParen
         return $ listToBag l
-        
+
     srcSpanCase :: ReadP SrcSpan
     srcSpanCase = do
         openParen
@@ -82,8 +82,9 @@ greadAbstract' = extR (extR (extR (extR (extR allButString srcSpanCase) stringCa
     occNameCase = do
         openParen
         string occNameMacro
+        name <- skipUntil (== ')')
         closeParen
-        return $ mkVarOcc "unknown occname"
+        return $ mkVarOcc name
 
     stringCase :: ReadP String
     stringCase = readS_to_P reads
@@ -122,21 +123,25 @@ greadAbstract' = extR (extR (extR (extR (extR allButString srcSpanCase) stringCa
         skipSpaces                     -- Discard leading space
         _ <- char '('                  -- Parse '('
         skipSpaces                     -- Discard following space
-    
+
     closeParen :: ReadP ()
     closeParen = do
         skipSpaces                     -- Discard leading space
         _ <- char ')'                  -- Parse ')'
         skipSpaces                     -- Discard following space
 
-    skipUntil :: (Char -> Bool) -> ReadP ()
+    skipUntil :: (Char -> Bool) -> ReadP (String)
     skipUntil pred = do
         s <- look
         skip s
         where
-            skip (c:s) | (not . pred) c = do _ <- get; skip s
-            skip _                 = do return ()
- 
+            skip :: String -> ReadP (String)
+            skip (c:s) | (not . pred) c = do
+                _ <- get;
+                skipped <- skip s
+                return $ [c] ++ skipped
+            skip _                 = do return ""
+
     -- Get a Constr's string at the front of an input string
     parseConstr :: ReadP String
     parseConstr =
@@ -162,7 +167,7 @@ readData s = do
         Just $ fst $ head readS
 showData :: Data a => a -> String
 showData d = do
-    gshow d
+    gshowAbstract d
     -- let constr = show $ toConstr d
     -- let subShown = gmapQ (showData) d
     -- case cast d of
@@ -174,4 +179,31 @@ showData d = do
     --             "(" ++ constr ++ ")"
     --         else
     --             "(" ++ constr ++ " " ++ (intercalate " " subShown) ++ ")"
+
+gshowAbstract :: Data a => a -> String
+gshowAbstract x = gshowsAbstract x ""
+
+gshowsAbstract :: Data a => a -> ShowS
+
+-- This is a prefix-show using surrounding "(" and ")",
+-- where we recurse into subterms with gmapQ.
+gshowsAbstract = extQ (extQ generalCase stringCase) occNameCase where
+
+
+    generalCase t = do
+        showChar '('
+        . (showString . showConstr . toConstr $ t)
+        . (foldr (.) id . gmapQ ((showChar ' ' .) . gshowsAbstract) $ t)
+        . showChar ')'
+        
+    stringCase = shows :: String -> ShowS
+
+    occNameCase :: OccName -> ShowS
+    occNameCase ocn = do
+        showString $ "(" ++ occNameMacro ++ (occNameString ocn) ++ ")" 
+
+
+
     
+    
+
