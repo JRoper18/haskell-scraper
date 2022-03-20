@@ -17,11 +17,19 @@ import Typed
 import Parsed
 import Core
 import Data.Aeson 
+import Data.Generics
+
 
 
 serializeId :: Data a => a -> Maybe a 
 serializeId d = readData (showData d)
 
+pshowSerializeId :: (Data a, Outputable a) => (a -> String) -> a -> Maybe String
+pshowSerializeId pshow d = do
+    let sid = serializeId d
+    case sid of
+        Just dat -> Just (pshow dat)
+        Nothing -> Nothing
 main :: IO ()
 main = do
     dflags <- runGhc (Just libdir) $ do
@@ -44,7 +52,23 @@ main = do
         describe "util" $ do
             it "should make nice data string representations" $ do
                 let d1 = Just "1"
-                shouldBe (Just d1) ( serializeId d1)
+                -- putStrLn $ showData d1
+                -- putStrLn $ gshow d1
+                shouldBe (serializeId d1) (Just d1)
+                let d3 = "testStr"
+                shouldBe (serializeId d3) (Just d3)
+            it "should work on weird types" $ do
+                let d2 = noSrcSpan
+                shouldBe (serializeId d2) (Just d2) 
+                let d4 = (mkVarOcc "unknown occname")
+                let pshowId1 = pshowSerializeId (docMaker . ppr) :: OccName -> Maybe String
+                shouldBe (pshowId1 d4) (Just (docMaker (ppr d4)))
+
+            it "should work on composite weirdness" $ do
+                let d5 = mkRdrUnqual (mkVarOcc "unknown occname") :: RdrName
+                putStrLn (showData d5)
+                let pshowId2 = pshowSerializeId (docMaker . ppr) :: RdrName -> Maybe String
+                shouldBe (pshowId2 d5) (Just (docMaker (ppr d5)))
         describe "parsing" $ do
             it "should parse the source" $ do
                 ( isRight parsedSourceOrErr ) `shouldBe` True
@@ -57,7 +81,9 @@ main = do
                         shouldBe ["f", "f"] (map snd showableDecls)
                     it "should have valid str reprs" $ do
                         let idDecls = (map (readData . showData) decls) :: [Maybe (GHC.LHsDecl GhcPs)]
-                        mapM_ (putStrLn . showData) decls
+                        -- mapM_ (putStrLn . showData) decls
+                         
+                        -- mapM (putStrLn . (showDecl docMaker)) (catMaybes idDecls)
                         mapM_ (\t -> shouldBe True (isJust t)) idDecls
                         let cmpPprDecls = zip (map (showDecl docMaker) decls) (map (showDecl docMaker) (catMaybes idDecls))
                         mapM_ (\t -> shouldBe (fst t) (snd t)) cmpPprDecls
@@ -86,12 +112,13 @@ main = do
                 shouldBe (moduleNameFromSource t2) (Just "B")
                 shouldBe (moduleNameFromSource fileContents) (Just "A")
             it "should type files" $ do
-                mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
+                -- mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
                 newFMb <- typeAnnotateSource testF
                 shouldBe (isJust newFMb) True 
                 case newFMb of
                     Just newF -> do
-                        putStrLn newF
+                        -- putStrLn newF
+                        return ()
                     Nothing ->
                         return ()
 
