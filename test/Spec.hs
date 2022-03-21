@@ -94,8 +94,8 @@ main = do
                         -- mapM (putStrLn . (showDecl docMaker)) (catMaybes idDecls)
                         mapM_ (\t -> shouldBe True (isJust t)) idDecls
                         let cmpPprDecls = zip (map (showDecl docMaker) decls) (map (showDecl docMaker) (catMaybes idDecls))
-                        mapM_ (putStrLn . fst) cmpPprDecls
-                        mapM_ (putStrLn . snd) cmpPprDecls
+                        -- mapM_ (putStrLn . fst) cmpPprDecls
+                        -- mapM_ (putStrLn . snd) cmpPprDecls 
                         mapM_ (\t -> shouldBe (fst t) (snd t)) cmpPprDecls
                 Left res -> do
                     it "should not error on parsing" $ do

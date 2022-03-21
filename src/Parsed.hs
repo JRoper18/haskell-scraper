@@ -103,7 +103,7 @@ declStrs targetFile = do
       -- print ppr ( moduleFromSource res)
       let decls = hsmodDecls ( unpackLocatedData (res) )
       let groupedDecls = groupBy ( declNamesEqual docMaker) decls
-      let groupedDeclStrs = map ( map ( showDecl docMaker ) ) groupedDecls 
+      let groupedDeclStrs = map ( map ( showData ) ) groupedDecls 
       let finalStr = intercalate "\n<|splitter|>\n" ( map ( intercalate "\n" ) groupedDeclStrs )
       return ( Right finalStr )
     Left x -> do

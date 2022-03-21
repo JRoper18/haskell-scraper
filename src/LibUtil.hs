@@ -21,9 +21,9 @@ import OccName (mkVarOcc, OccName, occNameString)
 import Data.Aeson (Value(Bool))
 import Bag
 
-srcSpanMacro = "{abstract:SrcSpan}"
+srcSpanMacro = "{Span}"
 faststringMacro = "{abstract:FastString}"
-occNameMacro = "{abstract:OccName}"
+occNameMacro = "{OcN}"
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -187,23 +187,21 @@ gshowsAbstract :: Data a => a -> ShowS
 
 -- This is a prefix-show using surrounding "(" and ")",
 -- where we recurse into subterms with gmapQ.
-gshowsAbstract = extQ (extQ generalCase stringCase) occNameCase where
-
-
+gshowsAbstract = extQ (extQ (extQ generalCase stringCase) occNameCase) srcSpanCase where
     generalCase t = do
         showChar '('
         . (showString . showConstr . toConstr $ t)
         . (foldr (.) id . gmapQ ((showChar ' ' .) . gshowsAbstract) $ t)
         . showChar ')'
-        
+
     stringCase = shows :: String -> ShowS
 
     occNameCase :: OccName -> ShowS
     occNameCase ocn = do
-        showString $ "(" ++ occNameMacro ++ (occNameString ocn) ++ ")" 
-
-
-
+        showChar '(' . showString occNameMacro . showString (occNameString ocn) . showChar ')'
     
-    
+    srcSpanCase :: SrcSpan -> ShowS
+    srcSpanCase ss = do
+        showChar '(' . showString srcSpanMacro . showChar ')'
+
 

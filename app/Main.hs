@@ -31,7 +31,7 @@ parsedArgs = MainArgs
     <*> strOption
         ( long "inputFiles"
         <> short 'i'
-        <> help "Space-seperated list of input files"
+        <> help "Newline-seperated file list of input files"
         <> metavar "TARGETS")
 
 main :: IO ()
@@ -44,11 +44,13 @@ main = mainHelp =<< execParser opts
  
 mainHelp :: MainArgs -> IO () 
 mainHelp ( MainArgs "parse" outF i ) = do
-  let inFs = words i
+  inFsTotal <- readFile i 
+  let inFs = lines inFsTotal
   mapM_ (processSourceFile outF) inFs
 
 mainHelp ( MainArgs "type" outF i ) = do
-  let inFs = words i
+  inFsTotal <- readFile i 
+  let inFs = lines inFsTotal
   let hsFiles = filter (isSuffixOf ".hs") inFs
   mapM_ (typeProcessSourceFile outF hsFiles) hsFiles 
 
