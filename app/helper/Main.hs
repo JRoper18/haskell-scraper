@@ -9,16 +9,14 @@ import Options.Applicative
 import Data.Semigroup ((<>))
 import System.Environment
 import Lib
-import Parsed
 import Data.Maybe
 import Typed
 import Data.List
-import Parsed
+import GHC (hsmodDecls, LHsDecl, GhcPs, runGhc, runParsedDecls, execStmt, execOptions, ParsedSource, GhcMonad, Ghc)
 import LibUtil
-import GHC (hsmodDecls, LHsDecl, GhcPs)
-import LibUtil
-import LibUtil (makeDocMaker)
 import qualified System.IO.Strict as S
+import Parsed
+import Data.Char (isSpace)
 
 data Input
   = FileInput FilePath
@@ -45,15 +43,20 @@ inputToStr (FileInput fin) = readFile fin
 
 data MainArgs = MainArgs
   { mode      :: String
-  , mainInput :: Input}
+  , mainInput :: Input
+  , subArgs :: Maybe String}
 
 parsedArgs :: Parser MainArgs
 parsedArgs = MainArgs
     <$> strOption
         ( long "mode"
+        <> short 'm'
         <> help "Mode to get data on. Must be ast, pretty, or eval." )
     <*> input
-    
+    <*> optional (strOption
+        ( long "subArgs"
+        <> short 's'
+        <> help "When using eval mode, these are a space-seperated list of args to pass to the function. " ) )
 
 main :: IO ()
 main = mainHelp =<< execParser opts
@@ -64,17 +67,17 @@ main = mainHelp =<< execParser opts
      <> header "Who the fuck uses program headers" )
 
 mainHelp :: MainArgs -> IO ()
-mainHelp ( MainArgs "ast" mainIn ) = do
+mainHelp ( MainArgs "ast" mainIn subArgs ) = do
   inputStr <- inputToStr mainIn
   parsedModEither <- parseStrSource inputStr
   case parsedModEither of
     Right parsedMod -> do
       let decls = hsmodDecls ( unpackLocatedData parsedMod )
-      putStrLn $ showData $ head decls
+      putStrLn $ intercalate "\n" (map showData decls) 
     Left err -> do
       printErrMessages err
 
-mainHelp ( MainArgs "pretty" mainIn ) = do
+mainHelp ( MainArgs "pretty" mainIn subArgs ) = do
   inputStr <- inputToStr mainIn
   let declMb = readData inputStr :: Maybe (LHsDecl GhcPs)
   case declMb of
@@ -84,14 +87,14 @@ mainHelp ( MainArgs "pretty" mainIn ) = do
     Nothing -> do
       putStrLn "Bad decl input"
 
--- mainHelp ( MainArgs "eval" inputStr ) = do
---     parsedModEither <- parseStrSource inputStr
-  -- case parsedModEither of
-  --   Right parsedMod -> do
-  --     let decls = hsmodDecls ( unpackLocatedData parsedMod )
-  --     mapM_ (putStrLn . showDecl docMaker) decls
-  --   Left err -> do
-  --     printErrMessages err
+mainHelp ( MainArgs "eval" mainIn (Just subArgs) ) = do
+  docMaker <- makeDocMaker
+  inputStr <- inputToStr mainIn
+  let declStrs = filter (not . (all isSpace)) (lines inputStr)
+  mapM_ (\declS -> if isNothing (readData (declS) :: Maybe (LHsDecl GhcPs)) then putStrLn ("Bad decl" ++ declS) else return()) declStrs
+  let decls = map readData (lines inputStr) :: [Maybe (LHsDecl GhcPs)]
+  strRes <- evalToStr docMaker (catMaybes decls) subArgs
+  putStrLn strRes
 
 mainHelp _ = return()
 

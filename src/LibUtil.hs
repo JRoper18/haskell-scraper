@@ -23,6 +23,8 @@ import Bag
 import GHC.Paths (libdir)
 import GhcPlugins (SDoc)
 import Outputable (showSDoc)
+import ErrUtils (ErrorMessages)
+import System.IO (hPutStrLn, stderr)
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{abstract:FastString}"
@@ -212,3 +214,9 @@ makeDocMaker = do
     dflags <- runGhc (Just libdir) $ do
         getSessionDynFlags
     return $ showSDoc dflags
+
+printErrMessages :: ErrorMessages -> IO ()
+printErrMessages msgs = do
+  let bagL = bagToList msgs
+  let strs = map show bagL
+  mapM_ ( hPutStrLn stderr ) strs 
