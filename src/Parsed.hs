@@ -11,7 +11,7 @@ import Data.Either
 import Data.List
 import Data.Maybe
 import Data.Data
-import Data.ByteString.Lazy.Char8 (unpack)
+import Data.ByteString.Lazy.Char8 (unpack, writeFile)
 import Data.Char (isSpace)
 import LibUtil
 import CoreUtils
@@ -19,13 +19,11 @@ import Bag
 import Desugar
 import TcSMonad
 import TcRnTypes
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, stderr, Handle, withFile, IOMode(..), hGetContents)
 import GHC.Unicode
 import GhcPlugins
 import Data.Aeson
 import GHC.Generics
-import TH
-
 
 showOutputable :: Outputable a => (SDoc -> String) -> a -> String
 showOutputable docMaker decl = docMaker ( ppr ( decl ) )
@@ -109,33 +107,29 @@ declStrs targetFile = do
     Left x -> do
       return (Left x)
 
+parseStrSource :: String -> IO (Either ErrUtils.ErrorMessages ParsedSource)
+parseStrSource fileContents = do 
+  let tmpFile = "/tmp/toBParsed.hs"
+  Prelude.writeFile tmpFile fileContents
+  ret <- parseSource tmpFile
+  -- removeFile tmpFile
+  return ret
 
-parseSource :: String -> IO (Either ErrUtils.ErrorMessages ParsedSource)
-parseSource targetFile =
-    defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
-      fileContents <- readFile targetFile
-      runGhc (Just libdir) $ do
-        dflags <- getSessionDynFlags
+
+parseSource :: FilePath -> IO (Either ErrUtils.ErrorMessages ParsedSource)
+parseSource targetFile = 
+  defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
+    fileContents <- readFile targetFile 
+    runGhc (Just libdir) $ do
+      dflags <- getSessionDynFlags
         -- let dflags' = foldl xopt_set dflags
         --                     [Opt_Cpp, Opt_ImplicitPrelude, Opt_MagicHash]
         -- setSessionDynFlags dflags
         -- target <- guessTarget targetFile Nothing
         -- setTargets [target]
         -- load LoadAllTargets
-        let filteredTxt = filter (\s -> isAscii s && (isSpace s || not ( isControl s))) fileContents
-        let parseFullRes = parser filteredTxt dflags targetFile
-        let parseRes = snd parseFullRes
-        return parseRes
-        -- let ret = either ( Left ) ( $ Right parsedSource ) 
-        -- return ret
-        -- modSum <- getModSummary $ mkModuleName targetFile
-        -- p <- parseModule modSum
-        -- t <- typecheckModule p
-        -- d <- desugarModule t
-        -- l <- loadModule d
-        -- n <- getNamesInScope
-        -- c <- return $ coreModule d
-
-        -- g <- getModuleGraph
-        -- return $ parsedSource d
+      let filteredTxt = filter (\s -> isAscii s && (isSpace s || not ( isControl s))) fileContents
+      let parseFullRes = parser filteredTxt dflags targetFile
+      let parseRes = snd parseFullRes
+      return parseRes  
         

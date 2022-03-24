@@ -1,6 +1,7 @@
 .stack-work/
 *~
 haskell_standard_libs.txt
+haskell_typed_libs.txt
 
 *.hi
 *.o

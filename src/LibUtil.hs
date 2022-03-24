@@ -20,6 +20,9 @@ import FastString
 import OccName (mkVarOcc, OccName, occNameString)
 import Data.Aeson (Value(Bool))
 import Bag
+import GHC.Paths (libdir)
+import GhcPlugins (SDoc)
+import Outputable (showSDoc)
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{abstract:FastString}"
@@ -204,4 +207,8 @@ gshowsAbstract = extQ (extQ (extQ generalCase stringCase) occNameCase) srcSpanCa
     srcSpanCase ss = do
         showChar '(' . showString srcSpanMacro . showChar ')'
 
-
+makeDocMaker :: IO ( SDoc -> String )
+makeDocMaker = do
+    dflags <- runGhc (Just libdir) $ do
+        getSessionDynFlags
+    return $ showSDoc dflags

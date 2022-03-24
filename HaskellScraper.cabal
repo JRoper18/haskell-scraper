@@ -6,12 +6,11 @@ cabal-version: 1.12
 
 name:           HaskellScraper
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/HaskellScraper#readme>
-homepage:       https://github.com/githubuser/HaskellScraper#readme
-bug-reports:    https://github.com/githubuser/HaskellScraper/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2022 Author name here
+description:    Please see the README on GitHub at <https://github.com/JRoper18/HaskellScraper#readme>
+homepage:       https://github.com/JRoper18/HaskellScraper#readme
+bug-reports:    https://github.com/JRoper18/HaskellScraper/issues
+author:         Jack Roper
+maintainer:     Jack Roper
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -21,7 +20,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/HaskellScraper
+  location: https://github.com/JRoper18/HaskellScraper
 
 library
   exposed-modules:
@@ -29,7 +28,6 @@ library
       Lib
       LibUtil
       Parsed
-      TH
       Typed
   other-modules:
       Paths_HaskellScraper
@@ -48,17 +46,18 @@ library
     , optparse-applicative <=0.17.0.0
     , regex-base
     , regex-posix <=0.96.0.1
+    , strict <=0.4.0.1
     , syb <=0.7.2.1
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
   default-language: Haskell2010
 
-executable HaskellScraper-exe
+executable HaskellHelper
   main-is: Main.hs
   other-modules:
       Paths_HaskellScraper
   hs-source-dirs:
-      app
+      app/helper
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   extra-lib-dirs:
       /home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include
@@ -74,6 +73,34 @@ executable HaskellScraper-exe
     , optparse-applicative <=0.17.0.0
     , regex-base
     , regex-posix <=0.96.0.1
+    , strict <=0.4.0.1
+    , syb <=0.7.2.1
+    , template-haskell <=2.16.0.0
+    , th-reify-many ==0.1.10
+  default-language: Haskell2010
+
+executable HaskellScraper
+  main-is: Main.hs
+  other-modules:
+      Paths_HaskellScraper
+  hs-source-dirs:
+      app/scrape
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  extra-lib-dirs:
+      /home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include
+  build-depends:
+      HaskellScraper
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , generic-deriving <=1.14.1
+    , ghc <=8.10.17
+    , ghc-paths
+    , hspec >=2.2.0
+    , optparse-applicative <=0.17.0.0
+    , regex-base
+    , regex-posix <=0.96.0.1
+    , strict <=0.4.0.1
     , syb <=0.7.2.1
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10
@@ -101,6 +128,7 @@ test-suite HaskellScraper-test
     , optparse-applicative <=0.17.0.0
     , regex-base
     , regex-posix <=0.96.0.1
+    , strict <=0.4.0.1
     , syb <=0.7.2.1
     , template-haskell <=2.16.0.0
     , th-reify-many ==0.1.10

@@ -29,7 +29,7 @@ parsedArgs = MainArgs
         <> short 'o'
         <> help "Output file path" )
     <*> strOption
-        ( long "inputFiles"
+        ( long "inputFilesList"
         <> short 'i'
         <> help "Newline-seperated file list of input files"
         <> metavar "TARGETS")
@@ -39,7 +39,7 @@ main = mainHelp =<< execParser opts
   where
     opts = info (parsedArgs <**> helper)
       ( fullDesc
-     <> progDesc "Lib to preprocess haskell source files for GPT to eat up. "
+     <> progDesc "A library to preprocess haskell source files for GPT to eat up. "
      <> header "Who the fuck uses program headers" )
  
 mainHelp :: MainArgs -> IO () 
