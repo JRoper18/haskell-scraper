@@ -132,26 +132,36 @@ parseSource targetFile =
 evalToStr :: (SDoc -> String) -> [LHsDecl GhcPs] -> String -> IO (String)
 evalToStr docMaker decls subArgs = do
     runGhc (Just libdir) $ do
-        setSessionDynFlags =<< getSessionDynFlags
-        ( evalToStr' docMaker decls subArgs )
+        dflags <- getSessionDynFlags
+        setSessionDynFlags dflags
+        ctx <- getContext
+        -- let declStr = "module Decls where\n" ++ intercalate "\n" ( map ( docMaker . ppr) decls )
+        -- liftIO (Prelude.writeFile "./Decls.hs" declStr)
+        importDecls <- mapM parseImportDecl ["import Prelude"]
+        interactiveImports <- mapM (\decl -> return $ IIDecl decl) importDecls
+        setContext interactiveImports
+        let declStrs = map ( docMaker . ppr) decls
+        let declStr = intercalate "\n" declStrs
+        liftIO ( putStrLn declStr )
+        names <- runDecls declStr
+        liftIO (putStrLn . docMaker . ppr $ names )
+        -- mapM_ (\stmt -> execStmt stmt execOptions ) ["f :: Int -> Int", "f 0 = 1", "f n = n"]
+        let fnameMb = getDeclName docMaker $ head decls
+        case fnameMb of
+          Just fname -> do
+            -- let stmt = fname ++ " " ++ subArg
+            let stmt = "x"
+            liftIO ( putStrLn stmt )
+            execRes <- execStmt stmt execOptions
+            case execRes of
+              ExecComplete execResReal alloc -> do
+                case execResReal of
+                  Right nameArr -> return $ docMaker $ ppr nameArr
+                  Left  exn  -> return $ docMaker (text "*** Exception:" <+>
+                                          text (show (exn :: SomeException)))
+              ExecBreak _ _ -> return "ExecBreak"
+          Nothing -> return "Could not get function name"
 
-evalToStr' :: (SDoc -> String) -> [LHsDecl GhcPs] -> String -> Ghc (String)
-evalToStr' docMaker decls subArgs = do
-  let declStr = intercalate "\n" ( map ( docMaker . ppr) decls )
-  liftIO ( putStrLn declStr )
-  names <- runDecls declStr
-  liftIO ( mapM_ (putStrLn . docMaker . ppr) names )
-  let fnameMb = getDeclName docMaker $ head decls
-  case fnameMb of
-    Just fname -> do
-      liftIO ( putStrLn fname)
-      let stmt = fname ++ " " ++ subArgs
-      execRes <- execStmt stmt execOptions
-      case execRes of
-        ExecComplete execResReal alloc -> do
-          case execResReal of
-            Right nameArr -> return $ docMaker $ ppr nameArr
-            Left  exn  -> return $ docMaker (text "*** Exception:" <+>
-                                    text (show (exn :: SomeException)))
-        ExecBreak _ _ -> return "ExecBreak"
-    Nothing -> return "Could not get function name"
+-- evalToStr' :: (SDoc -> String) -> [LHsDecl GhcPs] -> String -> GhcMonad (String)
+-- evalToStr' docMaker decls subArgs = do
+  

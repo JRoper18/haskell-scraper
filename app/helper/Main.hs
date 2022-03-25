@@ -17,6 +17,8 @@ import LibUtil
 import qualified System.IO.Strict as S
 import Parsed
 import Data.Char (isSpace)
+import GhcPlugins (ppr)
+import System.IO
 
 data Input
   = FileInput FilePath
@@ -79,13 +81,11 @@ mainHelp ( MainArgs "ast" mainIn subArgs ) = do
 
 mainHelp ( MainArgs "pretty" mainIn subArgs ) = do
   inputStr <- inputToStr mainIn
-  let declMb = readData inputStr :: Maybe (LHsDecl GhcPs)
-  case declMb of
-    Just decl -> do
-      docMaker <- makeDocMaker
-      (putStrLn . showDecl docMaker) decl
-    Nothing -> do
-      putStrLn "Bad decl input"
+  let declStrs = filter (not . (all isSpace)) (lines inputStr)
+  mapM_ (\declS -> if isNothing (readData (declS) :: Maybe (LHsDecl GhcPs)) then hPutStrLn stderr ("Bad decl:\n" ++ declS ++ "\n") else return()) declStrs
+  let decls = map readData (lines inputStr) :: [Maybe (LHsDecl GhcPs)]
+  docMaker <- makeDocMaker
+  mapM_ (putStrLn . docMaker . ppr) (catMaybes decls)
 
 mainHelp ( MainArgs "eval" mainIn (Just subArgs) ) = do
   docMaker <- makeDocMaker
