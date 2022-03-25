@@ -19,12 +19,13 @@ import Bag
 import Desugar
 import TcSMonad
 import TcRnTypes
-import System.IO (hPutStrLn, stderr, Handle, withFile, IOMode(..), hGetContents)
+import System.IO (hPutStrLn, stderr, Handle, withFile, IOMode(..), hGetContents, openFile, hSetEncoding)
 import GHC.Unicode
 import GhcPlugins
 import Data.Aeson
 import GHC.Generics
 import GHC.Exception (SomeException)
+import GHC.IO.Encoding
 
 showOutputable :: Outputable a => (SDoc -> String) -> a -> String
 showOutputable docMaker decl = docMaker ( ppr ( decl ) )
@@ -114,7 +115,9 @@ parseStrSource fileContents = do
 parseSource :: FilePath -> IO (Either ErrUtils.ErrorMessages ParsedSource)
 parseSource targetFile =
   defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
-    fileContents <- readFile targetFile
+    inputHandle <- openFile targetFile ReadMode 
+    hSetEncoding inputHandle latin1
+    fileContents <- hGetContents inputHandle
     runGhc (Just libdir) $ do
       dflags <- getSessionDynFlags
         -- let dflags' = foldl xopt_set dflags

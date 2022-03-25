@@ -21,14 +21,18 @@ import OccName (mkVarOcc, OccName, occNameString)
 import Data.Aeson (Value(Bool))
 import Bag
 import GHC.Paths (libdir)
-import GhcPlugins (SDoc)
+import GhcPlugins (SDoc, nameUnique, nameOccName, mkSystemName)
 import Outputable (showSDoc)
 import ErrUtils (ErrorMessages)
 import System.IO (hPutStrLn, stderr)
+import Unique (unpkUnique, mkUnique)
+import IfaceSyn (ShowHowMuch(ShowSome))
 
 srcSpanMacro = "{Span}"
-faststringMacro = "{abstract:FastString}"
+faststringMacro = "{FStr}"
 occNameMacro = "{OcN}"
+nameMacro = "{Nm}"
+moduleNameMacro = "{Mnm}"
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -53,7 +57,14 @@ greadAbstract = readP_to_S greadAbstract'
 
   -- Helper for recursive read
 greadAbstract' :: Data a' => ReadP a'
-greadAbstract' = extR (extR (extR (extR (extR allButString srcSpanCase) stringCase) faststringCase) occNameCase) bagCase where
+greadAbstract' = extR(extR (extR (extR (extR (extR (extR allButString 
+    srcSpanCase) 
+    stringCase) 
+    faststringCase) 
+    occNameCase) 
+    bagCase) 
+    nameCase)
+    moduleNameCase where
 
     -- A specific case for strings
     -- boolCase :: ReadP Bool = do
@@ -80,17 +91,36 @@ greadAbstract' = extR (extR (extR (extR (extR allButString srcSpanCase) stringCa
     faststringCase = do
         openParen
         string faststringMacro
+        name <- stringCase
         closeParen
-        return $ mkFastString "errorStr"
+        return $ mkFastString name
 
     occNameCase :: ReadP OccName
     occNameCase = do
         openParen
         string occNameMacro
-        name <- skipUntil (== ')')
+        name <- stringCase
         closeParen
         return $ mkVarOcc name
 
+    nameCase :: ReadP GHC.Name
+    nameCase = do
+        openParen
+        string nameMacro
+        uniqCh <- get
+        uniqIntStr <- skipUntil (== '|')
+        char '|'
+        occName <- occNameCase
+        closeParen
+        return $ mkSystemName (mkUnique uniqCh (read uniqIntStr)) occName
+
+    moduleNameCase :: ReadP GHC.ModuleName 
+    moduleNameCase = do
+        openParen
+        string moduleNameMacro
+        name <- skipUntil (== ')')
+        closeParen
+        return $ mkModuleName name
     stringCase :: ReadP String
     stringCase = readS_to_P reads
 
@@ -192,7 +222,15 @@ gshowsAbstract :: Data a => a -> ShowS
 
 -- This is a prefix-show using surrounding "(" and ")",
 -- where we recurse into subterms with gmapQ.
-gshowsAbstract = extQ (extQ (extQ generalCase stringCase) occNameCase) srcSpanCase where
+gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ generalCase 
+    stringCase) 
+    occNameCase) 
+    srcSpanCase) 
+    fastStringCase ) 
+    nameCase) 
+    moduleNameCase where
+    
+    
     generalCase t = do
         showChar '('
         . (showString . showConstr . toConstr $ t)
@@ -203,11 +241,24 @@ gshowsAbstract = extQ (extQ (extQ generalCase stringCase) occNameCase) srcSpanCa
 
     occNameCase :: OccName -> ShowS
     occNameCase ocn = do
-        showChar '(' . showString occNameMacro . showString (occNameString ocn) . showChar ')'
+        showChar '(' . showString occNameMacro . stringCase (occNameString ocn) . showChar ')'
     
     srcSpanCase :: SrcSpan -> ShowS
     srcSpanCase ss = do
         showChar '(' . showString srcSpanMacro . showChar ')'
+    
+    fastStringCase :: FastString -> ShowS 
+    fastStringCase fs = do
+        showChar '(' . showString faststringMacro . stringCase (unpackFS fs) . showChar ')'
+    
+    nameCase :: GHC.Name -> ShowS 
+    nameCase n = do
+        let unpkU = unpkUnique $ nameUnique n 
+        showChar '(' . showString nameMacro . showChar (fst unpkU) . showString (show (snd unpkU)) . showChar '|' . occNameCase (nameOccName n) . showChar ')'
+
+    moduleNameCase :: GHC.ModuleName -> ShowS
+    moduleNameCase mn = do
+        showChar '(' . showString moduleNameMacro . showString (moduleNameString mn). showChar ')'
 
 makeDocMaker :: IO ( SDoc -> String )
 makeDocMaker = do

@@ -18,6 +18,7 @@ import Parsed
 import Core
 import Data.Aeson 
 import Data.Generics
+import Unique (mkUnique)
 
 
 
@@ -59,15 +60,32 @@ main = do
                 shouldBe (serializeId d3) (Just d3)
                 let sList = ["a", "b", "c"]
                 shouldBe (serializeId sList) (Just sList)
+                let s1 = "\"a\""
+                shouldBe (serializeId s1) (Just s1)
+                let s2 = ""
+                shouldBe (serializeId s1) (Just s1)
             it "should work on weird types" $ do
                 let d2 = noSrcSpan
                 shouldBe (serializeId d2) (Just d2) 
                 let d4 = (mkVarOcc "unknown occname")
                 let pshowId1 = pshowSerializeId (docMaker . ppr) :: OccName -> Maybe String
                 shouldBe (pshowId1 d4) (Just (docMaker (ppr d4)))
-
+                let occWeird = mkVarOcc "\n\t\"var\'\""
+                shouldBe (pshowId1 occWeird) (Just (docMaker (ppr occWeird)))
+                let fs = mkFastString "hello world"
+                shouldBe (serializeId fs) (Just fs)
+                let fsSpec = mkFastString "\"hellowo wowowld"
+                shouldBe (serializeId fsSpec) (Just fsSpec)
+                let st = SourceText "3"
+                shouldBe (serializeId st) (Just st)
+                let nm = mkSystemName (mkUnique 'A' 1) d4
+                let pshowId2 = pshowSerializeId (docMaker . ppr) :: Name -> Maybe String
+                shouldBe (pshowId2 nm) (Just (docMaker (ppr nm)))
+                let mnm = mkModuleName "ModName"
+                let pshowId3 = pshowSerializeId (docMaker . ppr) :: ModuleName -> Maybe String
+                shouldBe (pshowId3 mnm) (Just (docMaker (ppr mnm)))
             it "should work on composite weirdness" $ do
-                let d5 = mkRdrUnqual (mkVarOcc "unknown occname") :: RdrName
+                let d5 = mkRdrUnqual (mkVarOcc "\"unknown\" 'occname") :: RdrName
                 let pshowId2 = pshowSerializeId (docMaker . ppr) :: RdrName -> Maybe String
                 shouldBe (pshowId2 d5) (Just (docMaker (ppr d5)))
                 let d6 = (L noSrcSpan d5)
@@ -90,7 +108,11 @@ main = do
                     it "should have valid str reprs" $ do
                         let idDecls = (map (readData . showData) decls) :: [Maybe (GHC.LHsDecl GhcPs)]
                         -- mapM_ (putStrLn . showData) decls
-                         
+                        -- let adeclStr = "(L ({Span}) (ValD (NoExtField) (FunBind (NoExtField) (L ({Span}) (Unqual ({OcN}f))) (MG (NoExtField) (L ({Span}) ((:) (L ({Span}) (Match (NoExtField) (FunRhs (L ({Span}) (Unqual ({OcN}f))) (Prefix) (NoSrcStrict)) ((:) (L ({Span}) (VarPat (NoExtField) (L ({Span}) (Unqual ({OcN}x))))) ([])) (GRHSs (NoExtField) ((:) (L ({Span}) (GRHS (NoExtField) ([]) (L ({Span}) (HsCase (NoExtField) (L ({Span}) (HsApp (NoExtField) (L ({Span}) (HsApp (NoExtField) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}foldl))))) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}x))))))) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}False))))))) (MG (NoExtField) (L ({Span}) ((:) (L ({Span}) (Match (NoExtField) (CaseAlt) ((:) (L ({Span}) (ConPatIn (L ({Span}) (Unqual ({OcN}Left))) (PrefixCon ((:) (L ({Span}) (VarPat (NoExtField) (L ({Span}) (Unqual ({OcN}a))))) ([]))))) ([])) (GRHSs (NoExtField) ((:) (L ({Span}) (GRHS (NoExtField) ([]) (L ({Span}) (HsApp (NoExtField) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}f))))) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}a))))))))) ([])) (L ({Span}) (EmptyLocalBinds (NoExtField)))))) ((:) (L ({Span}) (Match (NoExtField) (CaseAlt) ((:) (L ({Span}) (ConPatIn (L ({Span}) (Unqual ({OcN}Right))) (PrefixCon ((:) (L ({Span}) (VarPat (NoExtField) (L ({Span}) (Unqual ({OcN}b))))) ([]))))) ([])) (GRHSs (NoExtField) ((:) (L ({Span}) (GRHS (NoExtField) ([]) (L ({Span}) (HsApp (NoExtField) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}f))))) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}b))))))))) ([])) (L ({Span}) (EmptyLocalBinds (NoExtField)))))) ((:) (L ({Span}) (Match (NoExtField) (CaseAlt) ((:) (L ({Span}) (WildPat (NoExtField))) ([])) (GRHSs (NoExtField) ((:) (L ({Span}) (GRHS (NoExtField) ([]) (L ({Span}) (HsVar (NoExtField) (L ({Span}) (Unqual ({OcN}False))))))) ([])) (L ({Span}) (EmptyLocalBinds (NoExtField)))))) ([]))))) (FromSource)))))) ([])) (L ({Span}) (EmptyLocalBinds (NoExtField)))))) ([])))) (FromSource)))))) (SyntaxExpr (HsLit (NoExtField) (HsString (NoSourceText) ({abstract:FastString}))) ([]) (WpHole)) (SyntaxExpr (HsLit (NoExtField) (HsString (NoSourceText) ({abstract:FastString}))) ([]) (WpHole)))) ([]))))))) ([])) (L ({Span}) (EmptyLocalBinds (NoExtField)))))) ([]))) (FromSource)) (WpHole) ([]))))"
+                        -- let adecl = readData adeclStr :: Maybe (GHC.LHsDecl GhcPs)
+                        -- case adecl of
+                        --     Just a -> putStrLn $ showDecl docMaker a
+                        --     Nothing -> putStrLn "im sad"
                         -- mapM (putStrLn . (showDecl docMaker)) (catMaybes idDecls)
                         mapM_ (\t -> shouldBe True (isJust t)) idDecls
                         let cmpPprDecls = zip (map (showDecl docMaker) decls) (map (showDecl docMaker) (catMaybes idDecls))
@@ -113,6 +135,8 @@ main = do
                         let keptBindNames = map ( docMaker . ppr . snd ) keptBindsWithNames
                         let keptBinds = map fst keptBindsWithNames
                         shouldBe ["f"] keptBindNames
+                        -- mapM_ (putStrLn . showData) keptBinds
+                        -- mapM_ (putStrLn . docMaker . ppr) keptBinds
                     Left res -> printErrMessages res
         describe "typing" $ do
             it "should be able to do grab the module name" $ do
