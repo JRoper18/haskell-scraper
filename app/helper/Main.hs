@@ -53,7 +53,7 @@ parsedArgs = MainArgs
     <$> strOption
         ( long "mode"
         <> short 'm'
-        <> help "Mode to get data on. Must be ast, pretty, or eval." )
+        <> help "Mode to get data on. Must be ast, pretty, or eval (deprecated, use runhaskell)." )
     <*> input
     <*> optional (strOption
         ( long "subArgs"

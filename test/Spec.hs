@@ -36,11 +36,14 @@ main = do
     dflags <- runGhc (Just libdir) $ do
         getSessionDynFlags
     let docMaker = showSDoc dflags
-    let testF = "./test/resources/f.hs"
+    let testF = "./test/resources/a.hs"
+    let testF2 = "./test/resources/b.hs"
     fileContents <- readFile testF
     parsedSourceOrErr <- parseSource testF 
     tcedSource <- runGhc (Just libdir) $ do 
-        typecheckSource testF "A"
+        dflags <- getSessionDynFlags
+        setSessionDynFlags dflags
+        typecheckSources [testF, testF2] "B"
     bindTypeLocs <- runGhc (Just libdir) $ do
         hsc_env <- getSession
         

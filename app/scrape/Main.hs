@@ -23,7 +23,7 @@ parsedArgs :: Parser MainArgs
 parsedArgs = MainArgs
     <$> strOption
         ( long "mode"
-        <> help "Must be either parse or type" )
+        <> help "Must be either parse or type." )
     <*> strOption
         ( long "outputFile"
         <> short 'o'
@@ -51,8 +51,11 @@ mainHelp ( MainArgs "parse" outF i ) = do
 mainHelp ( MainArgs "type" outF i ) = do
   inFsTotal <- readFile i 
   let inFs = lines inFsTotal
-  let hsFiles = filter (isSuffixOf ".hs") inFs
-  mapM_ (typeProcessSourceFile outF hsFiles) hsFiles 
+  let hsFiles = filter (\inF -> isSuffixOf ".hs" inF) inFs
+  mapM_ (\inF -> do
+      res <- typeAnnotatePackage inF
+      mapM_ putStrLn (catMaybes res)
+    ) inFs 
 
 mainHelp _ = return()
 
