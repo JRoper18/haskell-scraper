@@ -31,7 +31,7 @@ parsedArgs = MainArgs
     <*> strOption
         ( long "inputFilesList"
         <> short 'i'
-        <> help "Newline-seperated file list of input files"
+        <> help "Newline-seperated file list of input files."
         <> metavar "TARGETS")
 
 main :: IO ()
@@ -54,19 +54,19 @@ mainHelp ( MainArgs "type" outF i ) = do
   let hsFiles = filter (\inF -> isSuffixOf ".hs" inF) inFs
   mapM_ (\inF -> do
       res <- typeAnnotatePackage inF
-      mapM_ putStrLn (catMaybes res)
+      mapM_ (appendFile outF) (catMaybes res)
     ) inFs 
 
 mainHelp _ = return()
 
-typeProcessSourceFile :: String -> [String] -> String -> IO ()
-typeProcessSourceFile outF inFs inF = do
-  print inF
-  annotatedMb <- typeAnnotateModuleInSources inFs inF
-  case annotatedMb of
-    Just annotated -> appendFile outF annotated
-    Nothing -> do
-      inContents <- readFile inF
-      appendFile outF (inContents)
+-- typeProcessSourceFile :: String -> [String] -> String -> IO ()
+-- typeProcessSourceFile outF inFs inF = do
+--   print inF
+--   annotatedMb <- typeAnnotateModuleInSources inFs inF
+--   case annotatedMb of
+--     Just annotated -> appendFile outF annotated
+--     Nothing -> do
+--       inContents <- readFile inF
+--       appendFile outF (inContents)
 
 

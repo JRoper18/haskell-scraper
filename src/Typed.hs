@@ -29,15 +29,16 @@ import Data.Aeson
 import GHC.Generics
 import Text.Regex.Posix
 import EnumSet
+import Control.Monad
 import System.Directory.Recursive
-import System.Directory (getDirectoryContents)
+import System.Directory (getDirectoryContents, doesDirectoryExist)
 import System.FilePath.Posix
 
-pprTid :: TargetId -> String 
+pprTid :: TargetId -> String
 pprTid (TargetModule mName) = "TargetModule " ++ moduleNameString mName
 pprTid (TargetFile fp _) = "TargetFile " ++ fp
 
-pprDynFlags :: DynFlags -> IO () 
+pprDynFlags :: DynFlags -> IO ()
 pprDynFlags dflags = do
   let docMaker = showSDoc dflags
   print (rtsOptsEnabled dflags)
@@ -55,7 +56,7 @@ typecheckSources targets moduleName = do
   -- liftIO (mapM_ (putStrLn . pprTid . targetId) (targets'))
   setTargets targets'
   let mName = mkModuleName moduleName
-  sStatus <- load $ LoadAllTargets 
+  sStatus <- load $ LoadAllTargets
   modSum <- getModSummary mName
   shown <- showModule modSum
   p <- parseModule modSum
@@ -84,49 +85,64 @@ moduleNameFromSource source = do
 typeAnnotatePackage :: String -> IO ( [Maybe String] )
 typeAnnotatePackage packageDir = do
   allFs <- getFilesRecursive packageDir
-  let allHsFs = filter (\f -> isSuffixOf ".hs" f && not (takeFileName f == "Setup.hs")) allFs
   let cabalF = head (filter (isSuffixOf ".cabal") allFs)
-  let pkgCacheF = head (filter (isSuffixOf "package.cache") allFs)
-  let pkgCacheDir = takeDirectory pkgCacheF
-  mapM (typeAnnotateModuleInSources allHsFs) allHsFs
-typeAnnotateModuleInSources :: [String] -> String -> IO ( Maybe String )
-typeAnnotateModuleInSources moduleFiles targetFile =
+  let possiblePkgCacheFs = (filter (isSuffixOf "package.cache") allFs)
+  let pkgCacheDirMb = if null possiblePkgCacheFs then Nothing else Just (takeDirectory (head possiblePkgCacheFs))
+  let includeDir = packageDir ++ "/include"
+  includeDirExists <- (doesDirectoryExist includeDir)
+  let includeDirList = if includeDirExists then [includeDir ++ "/"] else []
+  let possibleSrcDirs = ["/src", ""] 
+  possibleSrcDirs <- filterM (doesDirectoryExist) (map (\d -> packageDir ++ d) possibleSrcDirs)
+  let srcDir = (head possibleSrcDirs) ++ "/"
+  print includeDirList
+  print includeDir
+  let allHsFs = filter (\f -> isSuffixOf ".hs" f && takeBaseName f /= "Setup" && not (isInfixOf "build" f)) allFs
+  let allHsPaths = catMaybes (map (stripPrefix srcDir) allHsFs)
+  let modNames = map (\f -> intercalate "." (splitDirectories (dropExtension f))) allHsPaths
+  mapM (\tup -> typeAnnotateModuleInSourcesFull pkgCacheDirMb includeDirList allHsFs (fst tup) (snd tup)) (zip allHsFs modNames)
+
+typeAnnotateModuleInSources :: [String] -> String -> String -> IO ( Maybe String )
+typeAnnotateModuleInSources = typeAnnotateModuleInSourcesFull Nothing []
+
+typeAnnotateModuleInSourcesFull :: Maybe String -> [String] -> [String] -> String -> String -> IO ( Maybe String )
+typeAnnotateModuleInSourcesFull pkgCacheDirMb includeDirs moduleFiles targetFile moduleName =
   defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
     fileContents <- readFile targetFile
     let fileLines = lines fileContents
     runGhc (Just libdir) $ do
-      let moduleNameMb = moduleNameFromSource fileContents
       dflags <- getSessionDynFlags
       let includes = includePaths dflags
-      let includes' = addQuoteInclude includes ["/home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/include/"]
-      let generalFlags' = (EnumSet.insert Opt_HideAllPackages (generalFlags dflags))  
+      let includes' = addQuoteInclude includes includeDirs
+      let generalFlags' = (EnumSet.insert Opt_HideAllPackages (generalFlags dflags))
+      let packageDBFlags' = case pkgCacheDirMb of
+            Just pkgCacheDir -> [PackageDB (PkgConfFile pkgCacheDir)]
+            Nothing -> packageDBFlags dflags
       let dflags' = dflags{
         includePaths = includes',
         -- generalFlags = generalFlags'
-        packageDBFlags = [PackageDB (PkgConfFile "/home/jroper18/Documents/Projects/HaskellScrape/haskell-compilable/packagedb")]        -- ignorePackageFlags = ((IgnorePackage "Prelude"):(ignorePackageFlags dflags))
+        packageDBFlags = packageDBFlags'
+        -- ignorePackageFlags = ((IgnorePackage "Prelude"):(ignorePackageFlags dflags))
       }
       setSessionDynFlags dflags'
       let docMaker = showSDoc dflags'
-      case moduleNameMb of
-        Just moduleName -> do
-          typecheckedSource <- typecheckSources moduleFiles moduleName
-          bindTypeLocsMon <- mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList typecheckedSource )
-          let unsafeBindTypeLocs = filter ( isOneLineSpan . fst ) ( concat bindTypeLocsMon )
-          let bindTypeLocs = [ (rss, t) | (RealSrcSpan rss, t) <- unsafeBindTypeLocs ]
-          let sortedTypeLocs = sortBy (\x y -> compare (fst x) (fst y)) bindTypeLocs
-          let lineLocs = map ( srcLocLine . realSrcSpanStart . fst ) sortedTypeLocs
-          -- let groupedByLineTypeLocs = groupBy (\x y -> (srcSpanStartLine( fst x )) == (srcSpanStartLine (fst x))) sortedTypeLocs
-          let lineInserts = map (\x -> ((srcSpanStartLine ( fst x), spanToLineInserts (fst x) (docMaker (ppr (snd x)))))) sortedTypeLocs
-          let lineInsertsPerLine = map (\i -> (
-                    concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
-                  )) [0..(length fileLines - 1)]
-          let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
-          let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
-          return $ Just $ intercalate "\n" commentedLines
-        Nothing -> return Nothing
+      liftIO ( putStrLn ("On file " ++ targetFile))
+      typecheckedSource <- typecheckSources moduleFiles moduleName
+      bindTypeLocsMon <- mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList typecheckedSource )
+      let unsafeBindTypeLocs = filter ( isOneLineSpan . fst ) ( concat bindTypeLocsMon )
+      let bindTypeLocs = [ (rss, t) | (RealSrcSpan rss, t) <- unsafeBindTypeLocs ]
+      let sortedTypeLocs = sortBy (\x y -> compare (fst x) (fst y)) bindTypeLocs
+      let lineLocs = map ( srcLocLine . realSrcSpanStart . fst ) sortedTypeLocs
+      -- let groupedByLineTypeLocs = groupBy (\x y -> (srcSpanStartLine( fst x )) == (srcSpanStartLine (fst x))) sortedTypeLocs
+      let lineInserts = map (\x -> ((srcSpanStartLine ( fst x), spanToLineInserts (fst x) (docMaker (ppr (snd x)))))) sortedTypeLocs
+      let lineInsertsPerLine = map (\i -> (
+                concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
+              )) [0..(length fileLines - 1)]
+      let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
+      let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
+      return $ Just $ intercalate "\n" commentedLines
 
-typeAnnotateSource :: String -> IO ( Maybe String )
-typeAnnotateSource targetFile = typeAnnotateModuleInSources [targetFile] targetFile
+typeAnnotateSource :: String -> String -> IO ( Maybe String )
+typeAnnotateSource targetFile mName = typeAnnotateModuleInSources [targetFile] targetFile mName
 
 typeIpBindLocs :: LIPBind GhcTc -> Ghc ( [(SrcSpan, Type)] )
 typeIpBindLocs lipBind = do
