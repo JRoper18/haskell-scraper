@@ -33,6 +33,8 @@ import Control.Monad
 import System.Directory.Recursive
 import System.Directory (getDirectoryContents, doesDirectoryExist)
 import System.FilePath.Posix
+import CabalUtil
+import Data.Maybe (Maybe(Nothing))
 
 pprTid :: TargetId -> String
 pprTid (TargetModule mName) = "TargetModule " ++ moduleNameString mName
@@ -86,31 +88,40 @@ typeAnnotatePackage :: String -> IO ( [Maybe String] )
 typeAnnotatePackage packageDir = do
   allFs <- getFilesRecursive packageDir
   let cabalF = head (filter (isSuffixOf ".cabal") allFs)
+  initialDFlags <- runGhc (Just libdir) getSessionDynFlags
+  cabalDynFlagsEither <- cabalSpecToDynFlags initialDFlags cabalF
+  dFlags <- case cabalDynFlagsEither of
+                  Left err -> do
+                    putStrLn $ show err
+                    return Nothing
+                  Right cabalDynFlags -> return $ Just cabalDynFlags
   let possiblePkgCacheFs = (filter (isSuffixOf "package.cache") allFs)
   let pkgCacheDirMb = if null possiblePkgCacheFs then Nothing else Just (takeDirectory (head possiblePkgCacheFs))
   let includeDir = packageDir ++ "/include"
   includeDirExists <- (doesDirectoryExist includeDir)
   let includeDirList = if includeDirExists then [includeDir ++ "/"] else []
-  let possibleSrcDirs = ["/src", ""] 
+  let possibleSrcDirs = ["/src", ""]
   possibleSrcDirs <- filterM (doesDirectoryExist) (map (\d -> packageDir ++ d) possibleSrcDirs)
   let srcDir = (head possibleSrcDirs) ++ "/"
   print includeDirList
   print includeDir
-  let allHsFs = filter (\f -> isSuffixOf ".hs" f && takeBaseName f /= "Setup" && not (isInfixOf "build" f)) allFs
+  let allHsFs = filter (\f -> isSuffixOf ".hs" f && takeBaseName f /= "Setup" && not (isInfixOf "build" f || isInfixOf "test" f)) allFs
   let allHsPaths = catMaybes (map (stripPrefix srcDir) allHsFs)
   let modNames = map (\f -> intercalate "." (splitDirectories (dropExtension f))) allHsPaths
-  mapM (\tup -> typeAnnotateModuleInSourcesFull pkgCacheDirMb includeDirList allHsFs (fst tup) (snd tup)) (zip allHsFs modNames)
+  mapM (\tup -> typeAnnotateModuleInSourcesFull (dFlags) pkgCacheDirMb includeDirList allHsFs (fst tup) (snd tup)) (zip allHsFs modNames)
 
 typeAnnotateModuleInSources :: [String] -> String -> String -> IO ( Maybe String )
-typeAnnotateModuleInSources = typeAnnotateModuleInSourcesFull Nothing []
+typeAnnotateModuleInSources = typeAnnotateModuleInSourcesFull Nothing Nothing []
 
-typeAnnotateModuleInSourcesFull :: Maybe String -> [String] -> [String] -> String -> String -> IO ( Maybe String )
-typeAnnotateModuleInSourcesFull pkgCacheDirMb includeDirs moduleFiles targetFile moduleName =
+typeAnnotateModuleInSourcesFull :: (Maybe DynFlags) -> Maybe String -> [String] -> [String] -> String -> String -> IO ( Maybe String )
+typeAnnotateModuleInSourcesFull initialDflagsMb pkgCacheDirMb includeDirs moduleFiles targetFile moduleName =
   defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
     fileContents <- readFile targetFile
     let fileLines = lines fileContents
     runGhc (Just libdir) $ do
-      dflags <- getSessionDynFlags
+      dflags <- case initialDflagsMb of
+        Just df -> return df 
+        Nothing ->  getSessionDynFlags
       let includes = includePaths dflags
       let includes' = addQuoteInclude includes includeDirs
       let generalFlags' = (EnumSet.insert Opt_HideAllPackages (generalFlags dflags))

@@ -24,6 +24,7 @@ source-repository head
 
 library
   exposed-modules:
+      CabalUtil
       Core
       Lib
       LibUtil
@@ -34,7 +35,8 @@ library
   hs-source-dirs:
       src
   build-depends:
-      aeson
+      Cabal ==3.2.1.0
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
     , dir-traverse ==0.2.3.0
@@ -42,9 +44,11 @@ library
     , filepath ==1.4.2.1
     , generic-deriving <=1.14.1
     , ghc <=8.10.17
+    , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
     , optparse-applicative <=0.17.0.0
+    , parsec >=3.1.4.0
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
@@ -61,8 +65,9 @@ executable HaskellHelper
       app/helper
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      HaskellScraper
-    , aeson
+      Cabal ==3.2.1.0
+    , HaskellScraper
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
     , dir-traverse ==0.2.3.0
@@ -70,9 +75,11 @@ executable HaskellHelper
     , filepath ==1.4.2.1
     , generic-deriving <=1.14.1
     , ghc <=8.10.17
+    , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
     , optparse-applicative <=0.17.0.0
+    , parsec >=3.1.4.0
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
@@ -89,8 +96,9 @@ executable HaskellScraper
       app/scrape
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      HaskellScraper
-    , aeson
+      Cabal ==3.2.1.0
+    , HaskellScraper
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
     , dir-traverse ==0.2.3.0
@@ -98,9 +106,11 @@ executable HaskellScraper
     , filepath ==1.4.2.1
     , generic-deriving <=1.14.1
     , ghc <=8.10.17
+    , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
     , optparse-applicative <=0.17.0.0
+    , parsec >=3.1.4.0
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
@@ -118,8 +128,9 @@ test-suite HaskellScraper-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -XFlexibleInstances -XDeriveDataTypeable
   build-depends:
-      HaskellScraper
-    , aeson
+      Cabal ==3.2.1.0
+    , HaskellScraper
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
     , dir-traverse ==0.2.3.0
@@ -127,9 +138,11 @@ test-suite HaskellScraper-test
     , filepath ==1.4.2.1
     , generic-deriving <=1.14.1
     , ghc <=8.10.17
+    , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
     , optparse-applicative <=0.17.0.0
+    , parsec >=3.1.4.0
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
