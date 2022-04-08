@@ -19,6 +19,8 @@ import Core
 import Data.Aeson 
 import Data.Generics
 import Unique (mkUnique)
+import Data.Text(pack, unpack)
+import IntermediatePlugin
 
 
 
@@ -157,3 +159,10 @@ main = do
                         return ()
                     Nothing ->
                         return ()
+            it "should be able to add types to span strings" $ do
+                let fNameStr = "./Text/XHtml/Internals.hs"
+                let fNameFs = mkFastString fNameStr
+                let spanTxt = pack "(L ({Span}RealSrcSpan SrcSpanMultiLine \"./Text/XHtml/Internals.hs\" 347 1 361 19) (AbsBinds (NoExtField)"
+                let replacements = [((mkSrcSpan (mkSrcLoc fNameFs 347 1) (mkSrcLoc fNameFs 361 19)), pack "Int -> Int")]
+                mapM_ print replacements
+                putStrLn $ unpack $ replaceSpanInnersWithTypes spanTxt replacements

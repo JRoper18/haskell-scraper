@@ -20,7 +20,6 @@ import LibUtil
 import CoreUtils
 import Bag
 import Desugar
-import TcSMonad
 import TcRnTypes
 import System.IO (hPutStrLn, stderr)
 import GHC.Unicode

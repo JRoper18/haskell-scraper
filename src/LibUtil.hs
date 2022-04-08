@@ -27,6 +27,7 @@ import ErrUtils (ErrorMessages)
 import System.IO (hPutStrLn, stderr)
 import Unique (unpkUnique, mkUnique)
 import IfaceSyn (ShowHowMuch(ShowSome))
+import qualified Data.ByteString as BS
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{FStr}"
@@ -57,12 +58,13 @@ greadAbstract = readP_to_S greadAbstract'
 
   -- Helper for recursive read
 greadAbstract' :: Data a' => ReadP a'
-greadAbstract' = extR(extR (extR (extR (extR (extR (extR allButString 
-    srcSpanCase) 
+greadAbstract' = extR(extR(extR (extR (extR (extR (extR (extR allButString 
+    srcSpanReadP) 
     stringCase) 
     faststringCase) 
     occNameCase) 
-    bagCase) 
+    tcBagCase) 
+    parseBagCase)
     nameCase)
     moduleNameCase where
 
@@ -71,22 +73,11 @@ greadAbstract' = extR(extR (extR (extR (extR (extR (extR allButString
     --     str <- choice [string "False", string "True"]
     --     if str == "True" then return True else return False
 
-    bagCase :: ReadP (Bag (GenLocated SrcSpan (HsBindLR (GhcPass 'Parsed) (GhcPass 'Parsed))))
-    bagCase = do
-        openParen
-        string "{abstract:Bag"
-        skipUntil (== '}')
-        char '}'
-        l <- greadAbstract'
-        closeParen
-        return $ listToBag l
 
-    srcSpanCase :: ReadP SrcSpan
-    srcSpanCase = do
-        openParen
-        string srcSpanMacro
-        closeParen
-        return noSrcSpan
+    byteStringCase :: ReadP BS.ByteString
+    byteStringCase = do
+        string "({BS})"
+        return $ BS.empty
     faststringCase :: ReadP FastString
     faststringCase = do
         openParen
@@ -153,30 +144,6 @@ greadAbstract' = extR(extR (extR (extR (extR (extR (extR allButString
     str2con = maybe mzero return
             . readConstr myDataType
 
-    openParen :: ReadP ()
-    openParen = do
-        skipSpaces                     -- Discard leading space
-        _ <- char '('                  -- Parse '('
-        skipSpaces                     -- Discard following space
-
-    closeParen :: ReadP ()
-    closeParen = do
-        skipSpaces                     -- Discard leading space
-        _ <- char ')'                  -- Parse ')'
-        skipSpaces                     -- Discard following space
-
-    skipUntil :: (Char -> Bool) -> ReadP (String)
-    skipUntil pred = do
-        s <- look
-        skip s
-        where
-            skip :: String -> ReadP (String)
-            skip (c:s) | (not . pred) c = do
-                _ <- get;
-                skipped <- skip s
-                return $ [c] ++ skipped
-            skip _                 = do return ""
-
     -- Get a Constr's string at the front of an input string
     parseConstr :: ReadP String
     parseConstr =
@@ -191,7 +158,6 @@ greadAbstract' = extR(extR (extR (extR (extR (extR (extR allButString
                  str <- munch1 (not . (==) ')')
                  c2  <- char ')'
                  return $ [c1] ++ str ++ [c2]
-
 
 readData :: Data a => String -> Maybe a
 readData s = do
@@ -222,13 +188,14 @@ gshowsAbstract :: Data a => a -> ShowS
 
 -- This is a prefix-show using surrounding "(" and ")",
 -- where we recurse into subterms with gmapQ.
-gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ generalCase 
+gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase 
     stringCase) 
     occNameCase) 
-    srcSpanCase) 
+    srcSpanShowS) 
     fastStringCase ) 
     nameCase) 
-    moduleNameCase where
+    moduleNameCase)
+    byteStringCase where
     
     
     generalCase t = do
@@ -259,6 +226,9 @@ gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ generalCase
     moduleNameCase :: GHC.ModuleName -> ShowS
     moduleNameCase mn = do
         showChar '(' . showString moduleNameMacro . showString (moduleNameString mn). showChar ')'
+    
+    byteStringCase :: BS.ByteString -> ShowS
+    byteStringCase bs = showString "({BS})"
 
 makeDocMaker :: IO ( SDoc -> String )
 makeDocMaker = do
@@ -271,3 +241,58 @@ printErrMessages msgs = do
   let bagL = bagToList msgs
   let strs = map show bagL
   mapM_ ( hPutStrLn stderr ) strs 
+
+srcSpanInnerShow :: SrcSpan -> String
+srcSpanInnerShow = show
+-- srcSpanInnerShow RealSrcSpan rss = show (RealSrcSpan rss)
+-- srcSpanInnerShow UnhelpfulSrcSpan = show () 
+
+srcSpanShowS :: SrcSpan -> ShowS
+srcSpanShowS ss = do
+    showChar '(' . showString srcSpanMacro . showString (srcSpanInnerShow ss) . showChar ')'
+
+srcSpanReadP :: ReadP SrcSpan
+srcSpanReadP = do
+    openParen
+    string srcSpanMacro
+    skipUntil (== ')')
+    closeParen
+    return noSrcSpan
+
+openParen :: ReadP ()
+openParen = do
+    skipSpaces                     -- Discard leading space
+    _ <- char '('                  -- Parse '('
+    skipSpaces                     -- Discard following space
+
+closeParen :: ReadP ()
+closeParen = do
+    skipSpaces                     -- Discard leading space
+    _ <- char ')'                  -- Parse ')'
+    skipSpaces                     -- Discard following space
+
+skipUntil :: (Char -> Bool) -> ReadP (String)
+skipUntil pred = do
+    s <- look
+    skip s
+    where
+        skip :: String -> ReadP (String)
+        skip (c:s) | (not . pred) c = do
+            _ <- get;
+            skipped <- skip s
+            return $ [c] ++ skipped
+        skip _                 = do return ""
+
+
+bagCaseReadP :: Data a => ReadP (Bag a)
+bagCaseReadP = do
+    openParen
+    string "{abstract:Bag"
+    skipUntil (== '}')
+    char '}'
+    l <- greadAbstract'
+    closeParen
+    return $ listToBag l
+
+tcBagCase :: ReadP (Bag(GenLocated SrcSpan (HsBindLR (GhcPass 'Typechecked) (GhcPass 'Typechecked)))) = bagCaseReadP
+parseBagCase :: ReadP (Bag(GenLocated SrcSpan (HsBindLR (GhcPass 'Parsed) (GhcPass 'Parsed)))) = bagCaseReadP

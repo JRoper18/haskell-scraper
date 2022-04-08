@@ -5,3 +5,4 @@ haskell_typed_libs.txt
 
 *.hi
 *.o
+dist-newstyle*
