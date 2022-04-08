@@ -46,8 +46,7 @@ main = do
         typecheckSources [testF, testF2] "B"
     bindTypeLocs <- runGhc (Just libdir) $ do
         hsc_env <- getSession
-        
-        mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList tcedSource )
+        mapM ( ( typeBindLocs hsc_env ) . unpackLocatedData ) ( bagToList tcedSource )
     dmod <- coreFromSource testF
     -- let tcStr = docMaker ( ppr ( tcedSource ) )
     -- putStrLn tcStr
@@ -150,7 +149,7 @@ main = do
                 shouldBe (moduleNameFromSource fileContents) (Just "A")
             it "should type files" $ do
                 -- mapM_ (putStrLn . docMaker . ppr ) (concat bindTypeLocs)
-                newFMb <- typeAnnotateSource testF
+                newFMb <- typeAnnotateSource testF "A"
                 shouldBe (isJust newFMb) True 
                 case newFMb of
                     Just newF -> do
@@ -158,4 +157,3 @@ main = do
                         return ()
                     Nothing ->
                         return ()
-

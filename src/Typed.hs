@@ -35,6 +35,7 @@ import System.Directory (getDirectoryContents, doesDirectoryExist)
 import System.FilePath.Posix
 import CabalUtil
 import Data.Maybe (Maybe(Nothing))
+import MonadUtils
 
 pprTid :: TargetId -> String
 pprTid (TargetModule mName) = "TargetModule " ++ moduleNameString mName
@@ -95,8 +96,9 @@ typeAnnotatePackage packageDir = do
                     putStrLn $ show err
                     return Nothing
                   Right cabalDynFlags -> return $ Just cabalDynFlags
-  let possiblePkgCacheFs = (filter (isSuffixOf "package.cache") allFs)
+  let possiblePkgCacheFs = (filter (\f -> (takeFileName f == "package.cache") && (isInfixOf "packagedb" f)) allFs)
   let pkgCacheDirMb = if null possiblePkgCacheFs then Nothing else Just (takeDirectory (head possiblePkgCacheFs))
+  if (pkgCacheDirMb == Nothing) then (putStrLn "No package cache dir found!") else print pkgCacheDirMb
   let includeDir = packageDir ++ "/include"
   includeDirExists <- (doesDirectoryExist includeDir)
   let includeDirList = if includeDirExists then [includeDir ++ "/"] else []
@@ -105,7 +107,8 @@ typeAnnotatePackage packageDir = do
   let srcDir = (head possibleSrcDirs) ++ "/"
   print includeDirList
   print includeDir
-  let allHsFs = filter (\f -> isSuffixOf ".hs" f && takeBaseName f /= "Setup" && not (isInfixOf "build" f || isInfixOf "test" f)) allFs
+  let allHsFs = filter (\f -> isSuffixOf ".hs" f && takeBaseName f /= "Setup" &&
+        not (isInfixOf "build" f || isInfixOf "test" f ||  isInfixOf "bench" f)) allFs
   let allHsPaths = catMaybes (map (stripPrefix srcDir) allHsFs)
   let modNames = map (\f -> intercalate "." (splitDirectories (dropExtension f))) allHsPaths
   mapM (\tup -> typeAnnotateModuleInSourcesFull (dFlags) pkgCacheDirMb includeDirList allHsFs (fst tup) (snd tup)) (zip allHsFs modNames)
@@ -113,14 +116,31 @@ typeAnnotatePackage packageDir = do
 typeAnnotateModuleInSources :: [String] -> String -> String -> IO ( Maybe String )
 typeAnnotateModuleInSources = typeAnnotateModuleInSourcesFull Nothing Nothing []
 
+typeAnnotateDecls :: (SDoc -> String) -> String -> LHsBinds GhcTc -> Ghc ( Maybe String )
+typeAnnotateDecls docMaker fileContents binds = do
+  let fileLines = lines fileContents
+  hsc_env <- getSession
+  bindTypeLocsMon <- mapM ( ( typeBindLocs hsc_env ) . unpackLocatedData ) ( bagToList binds )
+  let unsafeBindTypeLocs = filter ( isOneLineSpan . fst ) ( concat bindTypeLocsMon )
+  let bindTypeLocs = [ (rss, t) | (RealSrcSpan rss, t) <- unsafeBindTypeLocs ]
+  let sortedTypeLocs = sortBy (\x y -> compare (fst x) (fst y)) bindTypeLocs
+  let lineLocs = map ( srcLocLine . realSrcSpanStart . fst ) sortedTypeLocs
+  -- let groupedByLineTypeLocs = groupBy (\x y -> (srcSpanStartLine( fst x )) == (srcSpanStartLine (fst x))) sortedTypeLocs
+  let lineInserts = map (\x -> ((srcSpanStartLine ( fst x), spanToLineInserts (fst x) (docMaker (ppr (snd x)))))) sortedTypeLocs
+  let lineInsertsPerLine = map (\i -> (
+            concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
+          )) [0..(length fileLines - 1)]
+  let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
+  let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
+  return $ Just $ intercalate "\n" commentedLines
+
 typeAnnotateModuleInSourcesFull :: (Maybe DynFlags) -> Maybe String -> [String] -> [String] -> String -> String -> IO ( Maybe String )
 typeAnnotateModuleInSourcesFull initialDflagsMb pkgCacheDirMb includeDirs moduleFiles targetFile moduleName =
   defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
     fileContents <- readFile targetFile
-    let fileLines = lines fileContents
     runGhc (Just libdir) $ do
       dflags <- case initialDflagsMb of
-        Just df -> return df 
+        Just df -> return df
         Nothing ->  getSessionDynFlags
       let includes = includePaths dflags
       let includes' = addQuoteInclude includes includeDirs
@@ -134,73 +154,60 @@ typeAnnotateModuleInSourcesFull initialDflagsMb pkgCacheDirMb includeDirs module
         packageDBFlags = packageDBFlags'
         -- ignorePackageFlags = ((IgnorePackage "Prelude"):(ignorePackageFlags dflags))
       }
-      setSessionDynFlags dflags'
+      setSessionDynFlags (dopt_set dflags' Opt_D_dump_rn )
       let docMaker = showSDoc dflags'
       liftIO ( putStrLn ("On file " ++ targetFile))
       typecheckedSource <- typecheckSources moduleFiles moduleName
-      bindTypeLocsMon <- mapM ( ( typeBindLocs ) . unpackLocatedData ) ( bagToList typecheckedSource )
-      let unsafeBindTypeLocs = filter ( isOneLineSpan . fst ) ( concat bindTypeLocsMon )
-      let bindTypeLocs = [ (rss, t) | (RealSrcSpan rss, t) <- unsafeBindTypeLocs ]
-      let sortedTypeLocs = sortBy (\x y -> compare (fst x) (fst y)) bindTypeLocs
-      let lineLocs = map ( srcLocLine . realSrcSpanStart . fst ) sortedTypeLocs
-      -- let groupedByLineTypeLocs = groupBy (\x y -> (srcSpanStartLine( fst x )) == (srcSpanStartLine (fst x))) sortedTypeLocs
-      let lineInserts = map (\x -> ((srcSpanStartLine ( fst x), spanToLineInserts (fst x) (docMaker (ppr (snd x)))))) sortedTypeLocs
-      let lineInsertsPerLine = map (\i -> (
-                concatMap snd (filter (\x -> fst x == i + 1) lineInserts)
-              )) [0..(length fileLines - 1)]
-      let insertedLines = zipWith (insertMultiple) fileLines lineInsertsPerLine
-      let commentedLines = concatMap (\x -> if fst x == snd x then [snd x] else ["--" ++ fst x, snd x]) (zip insertedLines fileLines)
-      return $ Just $ intercalate "\n" commentedLines
+      typeAnnotateDecls docMaker fileContents typecheckedSource
 
 typeAnnotateSource :: String -> String -> IO ( Maybe String )
 typeAnnotateSource targetFile mName = typeAnnotateModuleInSources [targetFile] targetFile mName
 
-typeIpBindLocs :: LIPBind GhcTc -> Ghc ( [(SrcSpan, Type)] )
-typeIpBindLocs lipBind = do
+typeIpBindLocs ::  (MonadIO m) => HscEnv -> LIPBind GhcTc -> m ( [(SrcSpan, Type)] )
+typeIpBindLocs hsc_env lipBind = do
   case (unpackLocatedData lipBind) of
-    IPBind _ _ lexpr -> typeExprLocs lexpr
+    IPBind _ _ lexpr -> typeExprLocs hsc_env lexpr
     _   -> return []
-typeLocalBindsLocs :: HsLocalBinds GhcTc -> Ghc ( [(SrcSpan, Type)] )
-typeLocalBindsLocs localBinds = do
+typeLocalBindsLocs :: (MonadIO m) => HscEnv -> HsLocalBinds GhcTc -> m ( [(SrcSpan, Type)] )
+typeLocalBindsLocs hsc_env localBinds = do
   case localBinds of
     HsValBinds _ deeperValBinds -> do
       case deeperValBinds of
         ValBinds _ lvalBindsBag sigs -> do
-          sublocs <- mapM ( typeBindLocs . unpackLocatedData ) (bagToList lvalBindsBag)
+          sublocs <- mapM ( (typeBindLocs hsc_env) . unpackLocatedData ) (bagToList lvalBindsBag)
           return $ concat sublocs
         XValBindsLR xxValBinds -> do
           case xxValBinds of
             NValBinds bindList sigs -> do
               let sublists = concatMap ( bagToList . snd ) (bindList)
-              tmp <- mapM ( typeBindLocs . unpackLocatedData ) sublists
+              tmp <- mapM ( (typeBindLocs hsc_env) . unpackLocatedData ) sublists
               return $ concat tmp
     HsIPBinds _ lIpBinds -> do
         case lIpBinds of
           IPBinds _ bindList -> do
-            tmp <- mapM typeIpBindLocs bindList
+            tmp <- mapM (typeIpBindLocs hsc_env) bindList
             return $ concat tmp
           _ -> return []
     _ -> return []
-typeStmtLocs :: ExprLStmt GhcTc -> Ghc ( [(SrcSpan, Type)] )
-typeStmtLocs lStmt = do
+typeStmtLocs :: (MonadIO m) => HscEnv -> ExprLStmt GhcTc -> m ( [(SrcSpan, Type)] )
+typeStmtLocs hsc_env lStmt = do
   let stmt = unpackLocatedData lStmt
   let stmtLoc = unpackLocatedLocation lStmt
   case stmt of
     BodyStmt _ body sExpr1 sExpr2 -> do
-      typeExprLocs body
+      typeExprLocs hsc_env body
     LetStmt _ locLocalBinds -> do
       let localBinds = unpackLocatedData locLocalBinds
-      typeLocalBindsLocs localBinds
+      typeLocalBindsLocs hsc_env localBinds
     LastStmt _ body _ sExpr -> do
-      typeExprLocs body
+      typeExprLocs hsc_env body
     _ -> return []
 
-typeExprLocs :: LHsExpr GhcTc -> Ghc ( [(SrcSpan, Type)] )
-typeExprLocs lexpr = do
+typeExprLocs :: (MonadIO m) => HscEnv -> LHsExpr GhcTc -> m ( [(SrcSpan, Type)] )
+typeExprLocs hsc_env lexpr = do
   let expr = unpackLocatedData lexpr
   let loc = unpackLocatedLocation lexpr
-
-  tMb <- lexprType lexpr
+  tMb <- lexprTypeWithEnv hsc_env lexpr
   let initialList = case tMb of
                       Just t -> [(loc, t)]
                       Nothing -> []
@@ -213,7 +220,7 @@ typeExprLocs lexpr = do
                     HsLet _ _ e1 -> [e1]
                     ExplicitList _ _ l -> l
                     _ -> []
-  subExprTypes <- mapM lexprType subExprs
+  subExprTypes <- mapM (lexprTypeWithEnv hsc_env )subExprs
   let subExprLocs = map unpackLocatedLocation subExprs
 
   let zippedMb = (zip subExprLocs subExprTypes)
@@ -223,23 +230,23 @@ typeExprLocs lexpr = do
                 ) zippedMb
   complexSubExprs <- case expr of
                           HsDo _ _ lStmtList -> do
-                            tmp <- mapM typeStmtLocs ( unpackLocatedData lStmtList )
+                            tmp <- mapM (typeStmtLocs hsc_env) ( unpackLocatedData lStmtList )
                             return $ concat tmp
                           HsLet _ localBinds _ -> do
-                            tmp <- mapM typeLocalBindsLocs ( localBinds )
+                            tmp <- mapM (typeLocalBindsLocs hsc_env) ( localBinds )
                             return $ unpackLocatedData tmp
                           _ -> return []
   return $ initialList ++ (catMaybes retMb) ++ (complexSubExprs)
 
 
-lexprStr :: (SDoc -> String) -> LHsExpr GhcTc -> Ghc ( Maybe String )
-lexprStr docMaker lexpr = do
-  typeLocs <- typeExprLocs lexpr
+lexprStr :: (MonadIO m) => (SDoc -> String) -> HscEnv -> LHsExpr GhcTc -> m ( Maybe String )
+lexprStr docMaker hsc_env lexpr = do
+  typeLocs <- typeExprLocs hsc_env lexpr
   return $ Just $ show $ map ( docMaker . ppr . snd ) typeLocs
   -- return $ Just $ docMaker $ ppr lexpr
 
-typeBindLocs :: HsBindLR GhcTc GhcTc -> Ghc ( [(SrcSpan, Type)] )
-typeBindLocs bind = do
+typeBindLocs :: (MonadIO m) => HscEnv -> HsBindLR GhcTc GhcTc -> m ( [(SrcSpan, Type)] )
+typeBindLocs hsc_env bind = do
   case bind of
     FunBind fun_ext _ fun_matches _ _ -> do
       let matches = map ( m_grhss . unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
@@ -248,19 +255,18 @@ typeBindLocs bind = do
       let exprs = ( map (\x -> case x of
                                   GRHS _ lstmt exprs -> exprs
                         ) matchGuardedRHS )
-      exprTypes <- mapM typeExprLocs exprs
+      exprTypes <- mapM (typeExprLocs hsc_env) exprs
       return ( concat exprTypes )
     -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
     VarBind _ _ var_rhs _ -> do
-      typeExprLocs var_rhs
+      typeExprLocs hsc_env var_rhs
     AbsBinds _ abs_tvs abs_ev_vars abs_exports abs_ev_binds abs_binds _ -> do
-      subBindStrsMb <- mapM ( typeBindLocs . unpackLocatedData ) ( bagToList abs_binds )
+      subBindStrsMb <- mapM ( (typeBindLocs hsc_env) . unpackLocatedData ) ( bagToList abs_binds )
       return $ concat subBindStrsMb
     _ -> return []
 
-lexprType :: LHsExpr GhcTc -> Ghc ( Maybe Type )
-lexprType lexpr = do
-  hsc_env <- getSession
+lexprTypeWithEnv :: (MonadIO m) => HscEnv -> LHsExpr GhcTc -> m ( Maybe Type )
+lexprTypeWithEnv hsc_env lexpr = do
   exprAndMsgs <- liftIO ( deSugarExpr hsc_env lexpr )
   let exprMb = snd exprAndMsgs
   case exprMb of
