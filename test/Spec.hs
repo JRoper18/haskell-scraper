@@ -68,6 +68,12 @@ main = do
                 shouldBe (serializeId s1) (Just s1)
                 let s2 = ""
                 shouldBe (serializeId s1) (Just s1)
+            it "should allow comments" $ do
+                let d1 = Just "1"
+                let s1 = showData (d1) ++ comment (showData (Just "0"))
+                shouldBe (readData s1) (Just d1)
+                let s2 = comment (showData (Just "0")) ++ showData (d1) 
+                shouldBe (readData s2) (Just d1)
             it "should work on weird types" $ do
                 let d2 = noSrcSpan
                 shouldBe (serializeId d2) (Just d2) 
@@ -162,7 +168,7 @@ main = do
             it "should be able to add types to span strings" $ do
                 let fNameStr = "./Text/XHtml/Internals.hs"
                 let fNameFs = mkFastString fNameStr
-                let spanTxt = pack "(L ({Span}RealSrcSpan SrcSpanMultiLine \"./Text/XHtml/Internals.hs\" 347 1 361 19) (AbsBinds (NoExtField)"
-                let replacements = [((mkSrcSpan (mkSrcLoc fNameFs 347 1) (mkSrcLoc fNameFs 361 19)), pack "Int -> Int")]
-                mapM_ print replacements
-                putStrLn $ unpack $ replaceSpanInnersWithTypes spanTxt replacements
+                let spanTxt = pack "(L ({Span}RealSrcSpan SrcSpanMultiLine \"./Text/XHtml/Internals.hs\" 347 1 361 19) (AbsBinds (NoExtField)))"
+                let replacements = [((mkSrcSpan (mkSrcLoc fNameFs 347 1) (mkSrcLoc fNameFs 361 19)), pack "/*Int -> Int*/")]
+                shouldBe (unpack $ replaceSpanInnersWithTypes spanTxt replacements) ("(L ({Span}/*Int -> Int*/) (AbsBinds (NoExtField)))") 
+                shouldBe (unpack $ replaceSpanInnersWithTypes spanTxt [])  ("(L ({Span}) (AbsBinds (NoExtField)))")

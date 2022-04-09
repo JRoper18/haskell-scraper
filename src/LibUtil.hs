@@ -28,6 +28,7 @@ import System.IO (hPutStrLn, stderr)
 import Unique (unpkUnique, mkUnique)
 import IfaceSyn (ShowHowMuch(ShowSome))
 import qualified Data.ByteString as BS
+import qualified Data.Text as TXT
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{FStr}"
@@ -159,9 +160,23 @@ greadAbstract' = extR(extR(extR (extR (extR (extR (extR (extR allButString
                  c2  <- char ')'
                  return $ [c1] ++ str ++ [c2]
 
+removeBetweenDelims :: TXT.Text -> TXT.Text -> TXT.Text -> TXT.Text
+removeBetweenDelims startDelim endDelim txt = do
+    let afterStarts = TXT.splitOn startDelim txt
+    if length afterStarts == 1 then txt else do
+        let afterStartsAndEnds = map (TXT.concat . tail . TXT.splitOn endDelim) afterStarts
+        TXT.concat ((head afterStarts) : afterStartsAndEnds)
+
+removeComments :: String -> String
+removeComments str = TXT.unpack $ removeBetweenDelims (TXT.pack "/*") (TXT.pack "*/") (TXT.pack str)
+
+comment :: String -> String
+comment str = "/*" ++ str ++ "*/"
+
 readData :: Data a => String -> Maybe a
 readData s = do
-    let readS = greadAbstract s
+    let preProcessed = removeComments s
+    let readS = greadAbstract preProcessed
     if null readS then
         Nothing
     else
