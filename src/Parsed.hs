@@ -84,6 +84,14 @@ getNamedDecls docMaker decls = do
 declNamesEqual :: (SDoc -> String) -> LHsDecl GhcPs -> LHsDecl GhcPs -> Bool
 declNamesEqual docMaker decl1 decl2 = getDeclName docMaker decl1 == getDeclName docMaker decl2
 
+declStrsFromParsedSource :: (SDoc -> String) -> ParsedSource -> String
+declStrsFromParsedSource docMaker psource = do
+  let decls = hsmodDecls ( unpackLocatedData (psource) )
+  let groupedDecls = groupBy ( declNamesEqual docMaker) decls
+  let groupedDeclStrs = map ( map ( showData ) ) groupedDecls
+  let finalStr = intercalate "\n<|splitter|>\n" ( map ( intercalate "\n" ) groupedDeclStrs )
+  finalStr
+  
 declStrs :: String -> IO (Either ErrUtils.ErrorMessages String)
 declStrs targetFile = do
   parsedSource <- parseSource targetFile
@@ -92,14 +100,7 @@ declStrs targetFile = do
   let docMaker = showSDoc dflags
   case parsedSource of
     Right res -> do
-      -- print (dynTypeRep (toDyn res))
-      -- print (dynTypeRep (toDyn dflags))
-      -- print ppr ( moduleFromSource res)
-      let decls = hsmodDecls ( unpackLocatedData (res) )
-      let groupedDecls = groupBy ( declNamesEqual docMaker) decls
-      let groupedDeclStrs = map ( map ( showData ) ) groupedDecls
-      let finalStr = intercalate "\n<|splitter|>\n" ( map ( intercalate "\n" ) groupedDeclStrs )
-      return ( Right finalStr )
+      return ( Right (declStrsFromParsedSource docMaker res))
     Left x -> do
       return (Left x)
 

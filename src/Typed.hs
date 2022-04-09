@@ -251,9 +251,7 @@ typeBindLocs hsc_env bind = do
       let matches = map ( m_grhss . unpackLocatedData ) ( unpackLocatedData $ mg_alts fun_matches )
       let lMatchGuardedRHS = concatMap ( grhssGRHSs ) matches
       let matchGuardedRHS = map unpackLocatedData lMatchGuardedRHS
-      let exprs = ( map (\x -> case x of
-                                  GRHS _ lstmt exprs -> exprs
-                        ) matchGuardedRHS )
+      let exprs = ( map (\(GRHS _ lstmt exprs) -> exprs) matchGuardedRHS )
       exprTypes <- mapM (typeExprLocs hsc_env) exprs
       return ( concat exprTypes )
     -- PatBind _ _ _ _ -> Just $ docMaker (ppr bind)
