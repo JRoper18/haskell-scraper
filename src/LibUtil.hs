@@ -32,7 +32,7 @@ import qualified Data.Text as TXT
 import Var
 import Type
 import TcEvidence
-import Unique
+import Unique -- https://hackage.haskell.org/package/ghc-8.10.7/docs/TcEvidence.html#t:TcEvBinds
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{FStr}"

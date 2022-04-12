@@ -45,11 +45,12 @@ main = do
     tcedSource <- runGhc (Just libdir) $ do 
         dflags <- getSessionDynFlags
         setSessionDynFlags dflags
-        typecheckSources [testF, testF2] "B"
+        tc <- typecheckSources [testF, testF2] "B"
+        return $ filter typedBindIsImportant (map unpackLocatedData (bagToList tc)) 
     putStrLn $ docMaker $ ppr tcedSource
     bindTypeLocs <- runGhc (Just libdir) $ do
         hsc_env <- getSession
-        mapM ( ( typeBindLocs hsc_env ) . unpackLocatedData ) ( bagToList tcedSource )
+        mapM ( ( typeBindLocs hsc_env ) ) ( tcedSource )
     dmod <- coreFromSource testF
     -- let tcStr = docMaker ( ppr ( tcedSource ) )
     -- putStrLn tcStr

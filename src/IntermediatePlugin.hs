@@ -69,7 +69,7 @@ parsedResAction _ modsum pmod = do
 
 typecheckResAction :: [CommandLineOption] -> ModSummary -> TcGblEnv -> TcM TcGblEnv
 typecheckResAction _ modsum tcenv = do
-    let binds = bagToList $ tcg_binds tcenv
+    let binds = filter typedBindIsImportant (map unpackLocatedData (bagToList (tcg_binds tcenv))) 
     hsc_env <- getTopEnv
     liftIO $ do
         let parsedF = parsedOutF modsum
@@ -79,7 +79,7 @@ typecheckResAction _ modsum tcenv = do
         let outF = "./typed.txt"
         let dflags = ms_hspp_opts modsum
         let docMaker = showSDoc dflags
-        unsafeTypeLocs <- mapM ( typeBindLocs hsc_env . unpackLocatedData ) binds
+        unsafeTypeLocs <- mapM ( typeBindLocs hsc_env ) binds
         let safeTypeLocs = map (mapSnd (TXT.pack . comment . docMaker . ppr) . realSpans) unsafeTypeLocs
         -- let spanStrsAndTypes = mapSnd (pack . docMaker . ppr) (mapFst (\ss -> pack ((srcSpanShowS ss) "")) (concat safeTypeLocs))
         -- (mapM_ (putStrLn . unpack . fst)) spanStrsAndTypes

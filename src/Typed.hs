@@ -244,6 +244,10 @@ lexprStr docMaker hsc_env lexpr = do
   return $ Just $ show $ map ( docMaker . ppr . snd ) typeLocs
   -- return $ Just $ docMaker $ ppr lexpr
 
+typedBindIsImportant :: HsBindLR GhcTc GhcTc -> Bool
+typedBindIsImportant (AbsBinds {}) = True
+typedBindIsImportant _ = False
+
 typeBindLocs :: (MonadIO m) => HscEnv -> HsBindLR GhcTc GhcTc -> m ( [(SrcSpan, Type)] )
 typeBindLocs hsc_env bind = do
   case bind of
