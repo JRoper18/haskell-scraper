@@ -46,6 +46,7 @@ main = do
         dflags <- getSessionDynFlags
         setSessionDynFlags dflags
         typecheckSources [testF, testF2] "B"
+    putStrLn $ docMaker $ ppr tcedSource
     bindTypeLocs <- runGhc (Just libdir) $ do
         hsc_env <- getSession
         mapM ( ( typeBindLocs hsc_env ) . unpackLocatedData ) ( bagToList tcedSource )

@@ -21,7 +21,7 @@ import OccName (mkVarOcc, OccName, occNameString)
 import Data.Aeson (Value(Bool))
 import Bag
 import GHC.Paths (libdir)
-import GhcPlugins (SDoc, nameUnique, nameOccName, mkSystemName)
+import GhcPlugins (SDoc, nameUnique, nameOccName, mkSystemName, vanillaIdInfo, IdDetails( VanillaId ) )
 import Outputable (showSDoc)
 import ErrUtils (ErrorMessages)
 import System.IO (hPutStrLn, stderr)
@@ -29,12 +29,16 @@ import Unique (unpkUnique, mkUnique)
 import IfaceSyn (ShowHowMuch(ShowSome))
 import qualified Data.ByteString as BS
 import qualified Data.Text as TXT
+import Var
+import Type
+import Unique
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{FStr}"
 occNameMacro = "{OcN}"
 nameMacro = "{Nm}"
 moduleNameMacro = "{Mnm}"
+varMacro = "{Vr}"
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -59,7 +63,7 @@ greadAbstract = readP_to_S greadAbstract'
 
   -- Helper for recursive read
 greadAbstract' :: Data a' => ReadP a'
-greadAbstract' = extR(extR(extR (extR (extR (extR (extR (extR allButString 
+greadAbstract' = extR(extR(extR(extR (extR (extR (extR (extR (extR allButString 
     srcSpanReadP) 
     stringCase) 
     faststringCase) 
@@ -67,7 +71,8 @@ greadAbstract' = extR(extR(extR (extR (extR (extR (extR (extR allButString
     tcBagCase) 
     parseBagCase)
     nameCase)
-    moduleNameCase where
+    moduleNameCase)
+    varCase where
 
     -- A specific case for strings
     -- boolCase :: ReadP Bool = do
@@ -105,6 +110,15 @@ greadAbstract' = extR(extR(extR (extR (extR (extR (extR (extR allButString
         occName <- occNameCase
         closeParen
         return $ mkSystemName (mkUnique uniqCh (read uniqIntStr)) occName
+
+    varCase :: ReadP Var
+    varCase = do
+        openParen 
+        string varMacro
+        name <- nameCase
+        let typ = mkTyConTy (funTyCon)   
+        closeParen
+        return $ mkLocalVar VanillaId name typ vanillaIdInfo
 
     moduleNameCase :: ReadP GHC.ModuleName 
     moduleNameCase = do
@@ -203,14 +217,15 @@ gshowsAbstract :: Data a => a -> ShowS
 
 -- This is a prefix-show using surrounding "(" and ")",
 -- where we recurse into subterms with gmapQ.
-gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase 
+gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase 
     stringCase) 
     occNameCase) 
     srcSpanShowS) 
     fastStringCase ) 
     nameCase) 
     moduleNameCase)
-    byteStringCase where
+    byteStringCase)
+    varCase where
     
     
     generalCase t = do
@@ -244,6 +259,9 @@ gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase
     
     byteStringCase :: BS.ByteString -> ShowS
     byteStringCase bs = showString "({BS})"
+
+    varCase :: Var -> ShowS
+    varCase v = showChar '(' . showString varMacro . nameCase (varName v) . showChar ')'
 
 makeDocMaker :: IO ( SDoc -> String )
 makeDocMaker = do

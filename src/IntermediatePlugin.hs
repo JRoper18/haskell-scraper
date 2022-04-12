@@ -93,6 +93,6 @@ typecheckResAction _ modsum tcenv = do
 
 plugin :: Plugin
 plugin = defaultPlugin {
-    -- parsedResultAction = parsedResAction,
+    parsedResultAction = parsedResAction,
     typeCheckResultAction = typecheckResAction
 }
