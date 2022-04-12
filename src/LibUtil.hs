@@ -31,6 +31,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Text as TXT
 import Var
 import Type
+import TcEvidence
 import Unique
 
 srcSpanMacro = "{Span}"
@@ -39,6 +40,7 @@ occNameMacro = "{OcN}"
 nameMacro = "{Nm}"
 moduleNameMacro = "{Mnm}"
 varMacro = "{Vr}"
+tcEvBindsMacro = "{TcEv}"
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -63,7 +65,7 @@ greadAbstract = readP_to_S greadAbstract'
 
   -- Helper for recursive read
 greadAbstract' :: Data a' => ReadP a'
-greadAbstract' = extR(extR(extR(extR (extR (extR (extR (extR (extR allButString 
+greadAbstract' = extR(extR(extR(extR(extR (extR (extR (extR (extR (extR allButString 
     srcSpanReadP) 
     stringCase) 
     faststringCase) 
@@ -72,7 +74,8 @@ greadAbstract' = extR(extR(extR(extR (extR (extR (extR (extR (extR allButString
     parseBagCase)
     nameCase)
     moduleNameCase)
-    varCase where
+    varCase)
+    tcEvBindsCase where
 
     -- A specific case for strings
     -- boolCase :: ReadP Bool = do
@@ -120,6 +123,12 @@ greadAbstract' = extR(extR(extR(extR (extR (extR (extR (extR (extR allButString
         closeParen
         return $ mkLocalVar VanillaId name typ vanillaIdInfo
 
+    tcEvBindsCase :: ReadP TcEvBinds
+    tcEvBindsCase = do
+        openParen
+        string tcEvBindsMacro
+        closeParen
+        return $ emptyTcEvBinds
     moduleNameCase :: ReadP GHC.ModuleName 
     moduleNameCase = do
         openParen
@@ -217,7 +226,7 @@ gshowsAbstract :: Data a => a -> ShowS
 
 -- This is a prefix-show using surrounding "(" and ")",
 -- where we recurse into subterms with gmapQ.
-gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase 
+gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase 
     stringCase) 
     occNameCase) 
     srcSpanShowS) 
@@ -225,7 +234,8 @@ gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase
     nameCase) 
     moduleNameCase)
     byteStringCase)
-    varCase where
+    varCase)
+    tcEvBindsCase where
     
     
     generalCase t = do
@@ -262,6 +272,9 @@ gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase
 
     varCase :: Var -> ShowS
     varCase v = showChar '(' . showString varMacro . nameCase (varName v) . showChar ')'
+
+    tcEvBindsCase :: TcEvBinds -> ShowS
+    tcEvBindsCase binds = showChar '(' . showString tcEvBindsMacro . showChar ')'
 
 makeDocMaker :: IO ( SDoc -> String )
 makeDocMaker = do
