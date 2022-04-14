@@ -2,7 +2,7 @@
 *~
 haskell_standard_libs.txt
 haskell_typed_libs.txt
-
+haskell_total_typed_libs.txt
 *.hi
 *.o
 dist-newstyle*

@@ -49,11 +49,13 @@ filterInnerSpans pred txt = do
         let withoutMacros = (head srcSpans) : filtered
         TXT.intercalate spanMacroTxt withoutMacros
 
-parsedOutF :: ModSummary -> String
-parsedOutF modsum = do
+makeOutF :: String -> ModSummary -> String
+makeOutF suffix modsum = do
     let dflags = ms_hspp_opts modsum
     let docMaker = showSDoc dflags 
-    docMaker (ppr (moduleName (ms_mod modsum))) ++ ".parsed.txt"
+    "../../typed-results/" ++ docMaker (ppr (moduleName (ms_mod modsum))) ++ "." ++ suffix ++ ".txt"
+parsedOutF = makeOutF "parsed"
+typedOutF = makeOutF "typed"
 
 parsedResAction :: [CommandLineOption] -> ModSummary -> HsParsedModule -> Hsc HsParsedModule
 parsedResAction _ modsum pmod = do
@@ -73,7 +75,7 @@ typecheckResAction _ modsum tcenv = do
     hsc_env <- getTopEnv
     let dflags = ms_hspp_opts modsum
     let docMaker = showSDoc dflags 
-    let outF = "../../typed-results/" ++ docMaker (ppr (moduleName (ms_mod modsum))) ++ ".typed.txt"
+    let outF = typedOutF modsum
     liftIO $ do
         -- let parsedF = parsedOutF modsum
         -- parsedFLines <- readFile parsedF
@@ -87,7 +89,7 @@ typecheckResAction _ modsum tcenv = do
         let origTxts = map (docMaker . ppr) binds
         let finalStrs = map show (zip origTxts replaced)
         -- appendFile outF (intercalate "\nreplacements:\n" (map (\p -> unpack (fst p) ++ " " ++ unpack (snd p)) typeLocTxts))
-        let wr = intercalate "\n<|splitter|>\n" finalStrs
+        let wr = intercalate "\n<|splitter|>\n" replaced
         writeFile outF wr
         -- mapM_ (\t -> appendFile outF (fst t ++ "\n<splitter>\n" ++ show (snd t) ++ "\n\n\n")) (zip replaced safeTypeLocs)
     return tcenv
@@ -95,6 +97,6 @@ typecheckResAction _ modsum tcenv = do
 
 plugin :: Plugin
 plugin = defaultPlugin {
-    -- parsedResultAction = parsedResAction,
+    parsedResultAction = parsedResAction,
     typeCheckResultAction = typecheckResAction
 }

@@ -22,7 +22,6 @@ import TcRnTypes
 import System.IO (hPutStrLn, stderr, Handle, withFile, IOMode(..), hGetContents, openFile, hSetEncoding)
 import GHC.Unicode
 import GhcPlugins
-import Data.Aeson
 import GHC.Generics
 import GHC.Exception (SomeException)
 import GHC.IO.Encoding

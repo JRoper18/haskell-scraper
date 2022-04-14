@@ -8,7 +8,6 @@ module Main where
 import Options.Applicative
 import Data.Semigroup ((<>))
 import System.Environment
-import Lib
 import Parsed
 import Data.Maybe
 import Typed

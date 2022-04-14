@@ -10,13 +10,11 @@ import Data.Data
 import Data.Maybe
 import Outputable
 import GhcPlugins 
-import Lib
 import Bag
 import LibUtil
 import Typed
 import Parsed
 import Core
-import Data.Aeson 
 import Data.Generics
 import Unique (mkUnique)
 import Data.Text(pack, unpack)

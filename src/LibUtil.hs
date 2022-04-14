@@ -18,7 +18,6 @@ import Control.Monad (mzero)
 import Text.Read.Lex (hsLex)
 import FastString
 import OccName (mkVarOcc, OccName, occNameString)
-import Data.Aeson (Value(Bool))
 import Bag
 import GHC.Paths (libdir)
 import GhcPlugins (SDoc, nameUnique, nameOccName, mkSystemName, vanillaIdInfo, IdDetails( VanillaId ))

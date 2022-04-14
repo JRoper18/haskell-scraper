@@ -24,7 +24,6 @@ import TcRnTypes
 import System.IO (hPutStrLn, stderr)
 import GHC.Unicode
 import GhcPlugins
-import Data.Aeson
 import GHC.Generics
 import Text.Regex.Posix
 import EnumSet
