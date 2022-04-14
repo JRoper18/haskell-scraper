@@ -21,7 +21,7 @@ import OccName (mkVarOcc, OccName, occNameString)
 import Data.Aeson (Value(Bool))
 import Bag
 import GHC.Paths (libdir)
-import GhcPlugins (SDoc, nameUnique, nameOccName, mkSystemName, vanillaIdInfo, IdDetails( VanillaId ) )
+import GhcPlugins (SDoc, nameUnique, nameOccName, mkSystemName, vanillaIdInfo, IdDetails( VanillaId ))
 import Outputable (showSDoc)
 import ErrUtils (ErrorMessages)
 import System.IO (hPutStrLn, stderr)
@@ -33,6 +33,9 @@ import Var
 import Type
 import TcEvidence
 import Unique -- https://hackage.haskell.org/package/ghc-8.10.7/docs/TcEvidence.html#t:TcEvBinds
+import TyCon
+import ConLike
+import DataCon
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{FStr}"
@@ -41,6 +44,8 @@ nameMacro = "{Nm}"
 moduleNameMacro = "{Mnm}"
 varMacro = "{Vr}"
 tcEvBindsMacro = "{TcEv}"
+tyConMacro = "{TC}"
+conLikeMacro = "{CL}"
 
 unpackLocatedData :: GHC.Located( p ) -> p
 unpackLocatedData (L l m) = m
@@ -65,7 +70,7 @@ greadAbstract = readP_to_S greadAbstract'
 
   -- Helper for recursive read
 greadAbstract' :: Data a' => ReadP a'
-greadAbstract' = extR(extR(extR(extR(extR (extR (extR (extR (extR (extR allButString 
+greadAbstract' = extR(extR(extR(extR(extR(extR(extR (extR (extR (extR (extR (extR allButString 
     srcSpanReadP) 
     stringCase) 
     faststringCase) 
@@ -75,7 +80,9 @@ greadAbstract' = extR(extR(extR(extR(extR (extR (extR (extR (extR (extR allButSt
     nameCase)
     moduleNameCase)
     varCase)
-    tcEvBindsCase where
+    tcEvBindsCase)
+    tyConCase)
+    conLikeCase where
 
     -- A specific case for strings
     -- boolCase :: ReadP Bool = do
@@ -129,6 +136,30 @@ greadAbstract' = extR(extR(extR(extR(extR (extR (extR (extR (extR (extR allButSt
         string tcEvBindsMacro
         closeParen
         return $ emptyTcEvBinds
+
+    tyConCase :: ReadP TyCon.TyCon
+    tyConCase = do
+        openParen
+        string tyConMacro
+        name <- nameCase
+        closeParen
+        let kind = liftedTypeKind
+        return $ mkPrimTyCon name [] kind []
+
+    conLikeCase :: ReadP ConLike
+    conLikeCase = do
+        openParen
+        string conLikeMacro
+        name <- nameCase
+        closeParen
+        let typ = mkTyConTy (funTyCon)   
+        let id = mkLocalVar VanillaId name typ vanillaIdInfo
+        let kind = liftedTypeKind
+        let tyCon = mkPrimTyCon name [] kind []
+        -- Fuck me that's stupid. This is so bad but I don't care. 
+        let dataCon = mkDataCon name False name [] [] [] [] [] [] [] [] typ NoRRI tyCon fIRST_TAG [] id NoDataConRep
+        return $ RealDataCon dataCon
+
     moduleNameCase :: ReadP GHC.ModuleName 
     moduleNameCase = do
         openParen
@@ -136,6 +167,7 @@ greadAbstract' = extR(extR(extR(extR(extR (extR (extR (extR (extR (extR allButSt
         name <- skipUntil (== ')')
         closeParen
         return $ mkModuleName name
+
     stringCase :: ReadP String
     stringCase = readS_to_P reads
 
@@ -226,7 +258,7 @@ gshowsAbstract :: Data a => a -> ShowS
 
 -- This is a prefix-show using surrounding "(" and ")",
 -- where we recurse into subterms with gmapQ.
-gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase 
+gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase 
     stringCase) 
     occNameCase) 
     srcSpanShowS) 
@@ -235,7 +267,9 @@ gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase
     moduleNameCase)
     byteStringCase)
     varCase)
-    tcEvBindsCase where
+    tcEvBindsCase)
+    tyConCase)
+    conLikeCase where
     
     
     generalCase t = do
@@ -276,6 +310,14 @@ gshowsAbstract = extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ(extQ generalCase
     tcEvBindsCase :: TcEvBinds -> ShowS
     tcEvBindsCase binds = showChar '(' . showString tcEvBindsMacro . showChar ')'
 
+    tyConCase :: TyCon.TyCon -> ShowS
+    tyConCase tc = showChar '(' . showString tyConMacro . nameCase (TyCon.tyConName tc) . showChar ')'
+
+    conLikeCase :: ConLike -> ShowS
+    conLikeCase cl = do
+        showChar '(' . showString conLikeMacro . nameCase (conLikeName cl) . showChar ')'
+
+    
 makeDocMaker :: IO ( SDoc -> String )
 makeDocMaker = do
     dflags <- runGhc (Just libdir) $ do

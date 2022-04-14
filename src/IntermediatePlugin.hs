@@ -71,28 +71,30 @@ typecheckResAction :: [CommandLineOption] -> ModSummary -> TcGblEnv -> TcM TcGbl
 typecheckResAction _ modsum tcenv = do
     let binds = filter typedBindIsImportant (map unpackLocatedData (bagToList (tcg_binds tcenv))) 
     hsc_env <- getTopEnv
+    let dflags = ms_hspp_opts modsum
+    let docMaker = showSDoc dflags 
+    let outF = "../../typed-results/" ++ docMaker (ppr (moduleName (ms_mod modsum))) ++ ".typed.txt"
     liftIO $ do
-        let parsedF = parsedOutF modsum
-        parsedFLines <- readFile parsedF
-        let bindTxts = map (TXT.pack . showData) binds
+        -- let parsedF = parsedOutF modsum
+        -- parsedFLines <- readFile parsedF
         -- let bindTxts = map (TXT.pack) (filter (/= "<|splitter|>") (lines parsedFLines))
-        let outF = "./typed.txt"
-        let dflags = ms_hspp_opts modsum
-        let docMaker = showSDoc dflags
+        let bindTxts = map (TXT.pack . showData) binds
         unsafeTypeLocs <- mapM ( typeBindLocs hsc_env ) binds
         let safeTypeLocs = map (mapSnd (TXT.pack . comment . docMaker . ppr) . realSpans) unsafeTypeLocs
         -- let spanStrsAndTypes = mapSnd (pack . docMaker . ppr) (mapFst (\ss -> pack ((srcSpanShowS ss) "")) (concat safeTypeLocs))
         -- (mapM_ (putStrLn . unpack . fst)) spanStrsAndTypes
         let replaced = zipWith (curry (\t -> TXT.unpack (uncurry replaceSpanInnersWithTypes t))) bindTxts safeTypeLocs
+        let origTxts = map (docMaker . ppr) binds
+        let finalStrs = map show (zip origTxts replaced)
         -- appendFile outF (intercalate "\nreplacements:\n" (map (\p -> unpack (fst p) ++ " " ++ unpack (snd p)) typeLocTxts))
-        let wr = intercalate "\n<|splitter|>\n" replaced
-        appendFile outF wr
+        let wr = intercalate "\n<|splitter|>\n" finalStrs
+        writeFile outF wr
         -- mapM_ (\t -> appendFile outF (fst t ++ "\n<splitter>\n" ++ show (snd t) ++ "\n\n\n")) (zip replaced safeTypeLocs)
     return tcenv
 
 
 plugin :: Plugin
 plugin = defaultPlugin {
-    parsedResultAction = parsedResAction,
+    -- parsedResultAction = parsedResAction,
     typeCheckResultAction = typecheckResAction
 }

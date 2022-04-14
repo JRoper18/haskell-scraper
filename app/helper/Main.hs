@@ -12,7 +12,7 @@ import Lib
 import Data.Maybe
 import Typed
 import Data.List
-import GHC (hsmodDecls, LHsDecl, GhcPs, runGhc, runParsedDecls, execStmt, execOptions, ParsedSource, GhcMonad, Ghc)
+import GHC (hsmodDecls, LHsDecl, GhcPs, runGhc, runParsedDecls, execStmt, execOptions, ParsedSource, GhcMonad, Ghc, HsBindLR, GhcTc)
 import LibUtil
 import qualified System.IO.Strict as S
 import Parsed
@@ -46,6 +46,7 @@ inputToStr (FileInput fin) = readFile fin
 data MainArgs = MainArgs
   { mode      :: String
   , mainInput :: Input
+  , stage :: Maybe String
   , subArgs :: Maybe String}
 
 parsedArgs :: Parser MainArgs
@@ -55,6 +56,10 @@ parsedArgs = MainArgs
         <> short 'm'
         <> help "Mode to get data on. Must be ast, pretty, or eval (deprecated, use runhaskell)." )
     <*> input
+    <*> optional(strOption
+        (long "stage"
+        <> short 'g'
+        <> help "Either type or parse. Which kind of ast or pretty-ification to do. Defaults to parse. ") )
     <*> optional (strOption
         ( long "subArgs"
         <> short 's'
@@ -69,7 +74,27 @@ main = mainHelp =<< execParser opts
      <> header "Who the fuck uses program headers" )
 
 mainHelp :: MainArgs -> IO ()
-mainHelp ( MainArgs "ast" mainIn subArgs ) = do
+mainHelp ( MainArgs "ast" mainIn (Just "parse") subArgs ) = astParse mainIn
+mainHelp ( MainArgs "ast" mainIn (Just "type") subArgs ) = astType mainIn
+mainHelp ( MainArgs "ast" mainIn Nothing subArgs ) = astType mainIn
+mainHelp ( MainArgs "pretty" mainIn (Just "type") subArgs ) = prettyType mainIn
+mainHelp ( MainArgs "pretty" mainIn (Just "parse") subArgs ) = prettyParse mainIn
+mainHelp ( MainArgs "pretty" mainIn Nothing subArgs ) = prettyParse mainIn
+mainHelp ( MainArgs "eval" mainIn _ (Just subArgs) ) = do
+  docMaker <- makeDocMaker
+  inputStr <- inputToStr mainIn
+  let declStrs = filter (not . (all isSpace)) (lines inputStr)
+  mapM_ (\declS -> if isNothing (readData (declS) :: Maybe (LHsDecl GhcPs)) then putStrLn ("Bad decl" ++ declS) else return()) declStrs
+  let decls = map readData (lines inputStr) :: [Maybe (LHsDecl GhcPs)]
+  strRes <- evalToStr docMaker (catMaybes decls) subArgs
+  putStrLn strRes
+mainHelp _ = return ()
+
+
+
+
+astParse :: Input -> IO () 
+astParse mainIn = do
   inputStr <- inputToStr mainIn
   parsedModEither <- parseStrSource inputStr
   case parsedModEither of
@@ -79,7 +104,20 @@ mainHelp ( MainArgs "ast" mainIn subArgs ) = do
     Left err -> do
       printErrMessages err
 
-mainHelp ( MainArgs "pretty" mainIn subArgs ) = do
+astType :: Input -> IO ()
+astType mainIn = do
+  inputStr <- inputToStr mainIn
+  parsedModEither <- parseStrSource inputStr
+  case parsedModEither of
+    Right parsedMod -> do
+      let decls = hsmodDecls ( unpackLocatedData parsedMod )
+      putStrLn $ intercalate "\n" (map showData decls) 
+    Left err -> do
+      printErrMessages err
+
+
+prettyParse :: Input -> IO () 
+prettyParse mainIn = do
   inputStr <- inputToStr mainIn
   let declStrs = filter (not . (all isSpace)) (lines inputStr)
   mapM_ (\declS -> if isNothing (readData (declS) :: Maybe (LHsDecl GhcPs)) then hPutStrLn stderr ("Bad decl:\n" ++ declS ++ "\n") else return()) declStrs
@@ -87,14 +125,13 @@ mainHelp ( MainArgs "pretty" mainIn subArgs ) = do
   docMaker <- makeDocMaker
   mapM_ (putStrLn . docMaker . ppr) (catMaybes decls)
 
-mainHelp ( MainArgs "eval" mainIn (Just subArgs) ) = do
-  docMaker <- makeDocMaker
+prettyType :: Input -> IO ()
+prettyType mainIn = do
   inputStr <- inputToStr mainIn
   let declStrs = filter (not . (all isSpace)) (lines inputStr)
-  mapM_ (\declS -> if isNothing (readData (declS) :: Maybe (LHsDecl GhcPs)) then putStrLn ("Bad decl" ++ declS) else return()) declStrs
-  let decls = map readData (lines inputStr) :: [Maybe (LHsDecl GhcPs)]
-  strRes <- evalToStr docMaker (catMaybes decls) subArgs
-  putStrLn strRes
+  mapM_ (\declS -> if isNothing (readData (declS) :: Maybe (HsBindLR GhcTc GhcTc)) then hPutStrLn stderr ("Bad decl:\n" ++ declS ++ "\n") else return()) declStrs
+  let decls = map readData (lines inputStr) :: [Maybe (HsBindLR GhcTc GhcTc)]
+  docMaker <- makeDocMaker
+  mapM_ (putStrLn . docMaker . ppr) (catMaybes decls)
 
-mainHelp _ = return()
 
