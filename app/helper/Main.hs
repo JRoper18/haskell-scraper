@@ -106,14 +106,11 @@ astParse mainIn = do
 astType :: Input -> IO ()
 astType mainIn = do
   inputStr <- inputToStr mainIn
-  parsedModEither <- parseStrSource inputStr
-  case parsedModEither of
-    Right parsedMod -> do
-      let decls = hsmodDecls ( unpackLocatedData parsedMod )
-      putStrLn $ intercalate "\n" (map showData decls) 
-    Left err -> do
-      printErrMessages err
-
+  let tmpF = "/tmp/tmpmod.hs"
+  let tmpContents = "module A where\n" ++ inputStr
+  writeFile tmpF tmpContents
+  strs <- astStringFromMod "A" tmpF 
+  putStrLn (head strs)
 
 prettyParse :: Input -> IO () 
 prettyParse mainIn = do

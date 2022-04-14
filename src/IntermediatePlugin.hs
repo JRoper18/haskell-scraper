@@ -22,32 +22,6 @@ import Parsed
 --     let replaced = foldl (\l spanType -> replace (fst spanType) (snd spanType) l) bindTxt spanStrsAndTypes  
 --     unpack replaced
 
-replaceSpanInnersWithTypes :: TXT.Text -> [(SrcSpan, TXT.Text)] -> TXT.Text
-replaceSpanInnersWithTypes txt typeLocs = do
-    let txtLocs = mapFst (TXT.pack . srcSpanInnerShow) typeLocs
-    let typeReplaced = replaceMany txtLocs txt
-    filterInnerSpans (TXT.isPrefixOf (TXT.pack "/*")) typeReplaced
-
-replaceMany :: [(TXT.Text, TXT.Text)] -> TXT.Text -> TXT.Text
-replaceMany replacements origin =
-    foldl (\l r -> uncurry TXT.replace r l) origin replacements
-
-realSpans :: [(SrcSpan, Type)] -> [(SrcSpan, Type)]
-realSpans unsafeLocs = [ (RealSrcSpan rss, t) | (RealSrcSpan rss, t) <- unsafeLocs ]
-
-filterInnerSpans :: (TXT.Text -> Bool) -> TXT.Text -> TXT.Text
-filterInnerSpans pred txt = do
-    let spanMacroTxt = (TXT.pack srcSpanMacro)
-    let srcSpans = TXT.splitOn spanMacroTxt txt
-    let midSrcSpans = tail srcSpans
-    if length srcSpans == 1 then txt else do
-        let endSpanIdxs = map (fromMaybe 0 . TXT.findIndex (== ')')) midSrcSpans
-        let spansAndIdxs = zip midSrcSpans endSpanIdxs
-        let filtered = map (\tup ->
-                if pred (TXT.take (snd tup) (fst tup)) then fst tup else TXT.drop (snd tup) (fst tup)
-                ) spansAndIdxs
-        let withoutMacros = (head srcSpans) : filtered
-        TXT.intercalate spanMacroTxt withoutMacros
 
 makeOutF :: String -> ModSummary -> String
 makeOutF suffix modsum = do
@@ -80,14 +54,9 @@ typecheckResAction _ modsum tcenv = do
         -- let parsedF = parsedOutF modsum
         -- parsedFLines <- readFile parsedF
         -- let bindTxts = map (TXT.pack) (filter (/= "<|splitter|>") (lines parsedFLines))
-        let bindTxts = map (TXT.pack . showData) binds
-        unsafeTypeLocs <- mapM ( typeBindLocs hsc_env ) binds
-        let safeTypeLocs = map (mapSnd (TXT.pack . comment . docMaker . ppr) . realSpans) unsafeTypeLocs
-        -- let spanStrsAndTypes = mapSnd (pack . docMaker . ppr) (mapFst (\ss -> pack ((srcSpanShowS ss) "")) (concat safeTypeLocs))
-        -- (mapM_ (putStrLn . unpack . fst)) spanStrsAndTypes
-        let replaced = zipWith (curry (\t -> TXT.unpack (uncurry replaceSpanInnersWithTypes t))) bindTxts safeTypeLocs
-        let origTxts = map (docMaker . ppr) binds
-        let finalStrs = map show (zip origTxts replaced)
+        replaced <- mapM (bindToASTString docMaker hsc_env) binds
+        -- let origTxts = map (docMaker . ppr) binds
+        -- let finalStrs = map show (zip origTxts replaced)
         -- appendFile outF (intercalate "\nreplacements:\n" (map (\p -> unpack (fst p) ++ " " ++ unpack (snd p)) typeLocTxts))
         let wr = intercalate "\n<|splitter|>\n" replaced
         writeFile outF wr

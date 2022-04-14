@@ -34,6 +34,8 @@ import System.FilePath.Posix
 import CabalUtil
 import Data.Maybe (Maybe(Nothing))
 import MonadUtils
+import qualified Data.Text as TXT
+
 
 pprTid :: TargetId -> String
 pprTid (TargetModule mName) = "TargetModule " ++ moduleNameString mName
@@ -73,6 +75,52 @@ spanToLineInserts span ins = do
   let e = (srcSpanEndCol span)-1
   [(s, "("), (s, ins), (e, ")")]
 
+astStringFromMod :: String -> String -> IO ([String])
+astStringFromMod modname fname = do
+  runGhc (Just libdir) $ do
+    dflags <- getSessionDynFlags
+    setSessionDynFlags dflags
+    tc <- typecheckSources [fname] modname
+    let unlocatedTc = map unpackLocatedData (bagToList tc)
+    hsc_env <- getSession
+    mapM (bindToASTString (showSDoc dflags) hsc_env) (filter typedBindIsImportant unlocatedTc)
+
+bindToASTString :: (MonadIO m) => (SDoc -> String) -> HscEnv -> HsBindLR GhcTc GhcTc -> m (String)
+bindToASTString docMaker hsc_env bind = do
+  let bindTxt = (TXT.pack . showData) bind
+  unsafeTypeLocs <- typeBindLocs hsc_env bind
+  let safeTypeLocs = mapSnd (TXT.pack . comment . docMaker . ppr) (realSpans unsafeTypeLocs)
+  -- let spanStrsAndTypes = mapSnd (pack . docMaker . ppr) (mapFst (\ss -> pack ((srcSpanShowS ss) "")) (concat safeTypeLocs))
+  -- (mapM_ (putStrLn . unpack . fst)) spanStrsAndTypes
+  let replaced = TXT.unpack (replaceSpanInnersWithTypes bindTxt safeTypeLocs)
+  return $ replaced
+
+replaceSpanInnersWithTypes :: TXT.Text -> [(SrcSpan, TXT.Text)] -> TXT.Text
+replaceSpanInnersWithTypes txt typeLocs = do
+    let txtLocs = mapFst (TXT.pack . srcSpanInnerShow) typeLocs
+    let typeReplaced = replaceMany txtLocs txt
+    filterInnerSpans (TXT.isPrefixOf (TXT.pack "/*")) typeReplaced
+
+replaceMany :: [(TXT.Text, TXT.Text)] -> TXT.Text -> TXT.Text
+replaceMany replacements origin =
+    foldl (\l r -> uncurry TXT.replace r l) origin replacements
+
+realSpans :: [(SrcSpan, Type)] -> [(SrcSpan, Type)]
+realSpans unsafeLocs = [ (RealSrcSpan rss, t) | (RealSrcSpan rss, t) <- unsafeLocs ]
+
+filterInnerSpans :: (TXT.Text -> Bool) -> TXT.Text -> TXT.Text
+filterInnerSpans pred txt = do
+    let spanMacroTxt = (TXT.pack srcSpanMacro)
+    let srcSpans = TXT.splitOn spanMacroTxt txt
+    let midSrcSpans = tail srcSpans
+    if length srcSpans == 1 then txt else do
+        let endSpanIdxs = map (fromMaybe 0 . TXT.findIndex (== ')')) midSrcSpans
+        let spansAndIdxs = zip midSrcSpans endSpanIdxs
+        let filtered = map (\tup ->
+                if pred (TXT.take (snd tup) (fst tup)) then fst tup else TXT.drop (snd tup) (fst tup)
+                ) spansAndIdxs
+        let withoutMacros = (head srcSpans) : filtered
+        TXT.intercalate spanMacroTxt withoutMacros
 
 moduleNameFromSource :: String -> Maybe String
 moduleNameFromSource source = do

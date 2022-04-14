@@ -35,6 +35,7 @@ import Unique -- https://hackage.haskell.org/package/ghc-8.10.7/docs/TcEvidence.
 import TyCon
 import ConLike
 import DataCon
+import DynFlags
 
 srcSpanMacro = "{Span}"
 faststringMacro = "{FStr}"
@@ -321,7 +322,9 @@ makeDocMaker :: IO ( SDoc -> String )
 makeDocMaker = do
     dflags <- runGhc (Just libdir) $ do
         getSessionDynFlags
-    return $ showSDoc dflags
+    let dflags_gopt_set = foldl gopt_set dflags [Opt_SuppressUniques]  
+    let dflags_gopt_unset = foldl gopt_unset dflags_gopt_set [Opt_PrintTypecheckerElaboration]  
+    return $ showSDoc dflags_gopt_set
 
 printErrMessages :: ErrorMessages -> IO ()
 printErrMessages msgs = do
