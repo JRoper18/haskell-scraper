@@ -110,7 +110,7 @@ astType mainIn = do
   let tmpContents = "module A where\n" ++ inputStr
   writeFile tmpF tmpContents
   strs <- astStringFromMod "A" tmpF 
-  putStrLn (head strs)
+  mapM_ putStrLn (strs)
 
 prettyParse :: Input -> IO () 
 prettyParse mainIn = do
