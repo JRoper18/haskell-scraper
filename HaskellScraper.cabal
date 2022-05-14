@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.5.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 
@@ -26,6 +26,7 @@ library
   exposed-modules:
       CabalUtil
       Core
+      Hackage
       IntermediatePlugin
       LibUtil
       Parsed
@@ -36,8 +37,10 @@ library
       src
   build-depends:
       Cabal ==3.2.1.0
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
+    , containers >=0.6.0.0
     , dir-traverse ==0.2.3.0
     , directory ==1.3.6.0
     , filepath ==1.4.2.1
@@ -45,13 +48,17 @@ library
     , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
+    , http-client ==0.7.11
+    , http-types ==0.12.3
     , optparse-applicative <=0.17.0.0
     , parsec >=3.1.4.0
+    , process ==1.6.13.2
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
     , syb <=0.7.2.1
     , text ==1.2.4.1
+    , utf8-string ==1.0.2
   default-language: Haskell2010
 
 executable HaskellHelper
@@ -64,8 +71,10 @@ executable HaskellHelper
   build-depends:
       Cabal ==3.2.1.0
     , HaskellScraper
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
+    , containers >=0.6.0.0
     , dir-traverse ==0.2.3.0
     , directory ==1.3.6.0
     , filepath ==1.4.2.1
@@ -73,13 +82,17 @@ executable HaskellHelper
     , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
+    , http-client ==0.7.11
+    , http-types ==0.12.3
     , optparse-applicative <=0.17.0.0
     , parsec >=3.1.4.0
+    , process ==1.6.13.2
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
     , syb <=0.7.2.1
     , text ==1.2.4.1
+    , utf8-string ==1.0.2
   default-language: Haskell2010
 
 executable HaskellScraper
@@ -92,8 +105,10 @@ executable HaskellScraper
   build-depends:
       Cabal ==3.2.1.0
     , HaskellScraper
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
+    , containers >=0.6.0.0
     , dir-traverse ==0.2.3.0
     , directory ==1.3.6.0
     , filepath ==1.4.2.1
@@ -101,13 +116,17 @@ executable HaskellScraper
     , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
+    , http-client ==0.7.11
+    , http-types ==0.12.3
     , optparse-applicative <=0.17.0.0
     , parsec >=3.1.4.0
+    , process ==1.6.13.2
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
     , syb <=0.7.2.1
     , text ==1.2.4.1
+    , utf8-string ==1.0.2
   default-language: Haskell2010
 
 test-suite HaskellScraper-test
@@ -121,8 +140,10 @@ test-suite HaskellScraper-test
   build-depends:
       Cabal ==3.2.1.0
     , HaskellScraper
+    , aeson ==2.0.3.0
     , base >=4.7 && <5
     , bytestring
+    , containers >=0.6.0.0
     , dir-traverse ==0.2.3.0
     , directory ==1.3.6.0
     , filepath ==1.4.2.1
@@ -130,11 +151,15 @@ test-suite HaskellScraper-test
     , ghc-boot
     , ghc-paths
     , hspec >=2.2.0
+    , http-client ==0.7.11
+    , http-types ==0.12.3
     , optparse-applicative <=0.17.0.0
     , parsec >=3.1.4.0
+    , process ==1.6.13.2
     , regex-base
     , regex-posix <=0.96.0.1
     , strict <=0.4.0.1
     , syb <=0.7.2.1
     , text ==1.2.4.1
+    , utf8-string ==1.0.2
   default-language: Haskell2010

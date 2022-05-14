@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Parsed where
 
 import GHC
@@ -25,6 +27,20 @@ import GhcPlugins
 import GHC.Generics
 import GHC.Exception (SomeException)
 import GHC.IO.Encoding
+import Hackage (SourceContext, filePath)
+import Data.Aeson (object, (.=), encode, decode, ToJSON, FromJSON, toEncoding, genericToEncoding, defaultOptions)
+
+
+data ParsedExample = ParsedExample {
+  context :: SourceContext,
+  content :: String,
+  binds :: [String],
+  name :: Maybe String
+} deriving (Generic, Eq, Show, Read)
+
+instance ToJSON ParsedExample where
+    toEncoding = genericToEncoding defaultOptions
+instance FromJSON ParsedExample
 
 showOutputable :: Outputable a => (SDoc -> String) -> a -> String
 showOutputable docMaker decl = docMaker ( ppr ( decl ) )
@@ -38,6 +54,33 @@ showDecl docMaker decl = do
 
 keepDecl :: GHC.LHsDecl ( GHC.GhcPs ) -> Bool
 keepDecl decl = isJust ( getDeclIds (decl) )
+
+parsedExampleFromBinds :: SourceContext -> [String] -> Maybe String  -> ParsedExample
+parsedExampleFromBinds sc binds name = do
+  ParsedExample {
+    context = sc,
+    content = intercalate "\n" binds,
+    binds = binds,
+    name = name
+  }
+
+getExampleFromSourceContext :: FilePath -> SourceContext -> IO ( [ParsedExample] ) 
+getExampleFromSourceContext prefixPath context = do
+  let targetFile = prefixPath ++ (filePath context)
+  parsedSourceEi <- parseSource targetFile
+  case parsedSourceEi of
+    Right parsedSource -> do
+        dflags <- runGhc (Just libdir) $ do
+          getSessionDynFlags
+        let docMaker = showSDoc dflags
+        let decls = hsmodDecls (unpackLocatedData parsedSource)
+        let groupedDecls = groupBy ( declNamesEqual docMaker) decls
+        let groupedDeclStrs = filter (not . null ) (map ( map ( showDecl docMaker ) ) groupedDecls )
+        let declNames = map (getDeclName docMaker) (head groupedDecls)
+        return $ map (\t -> (parsedExampleFromBinds context (fst t) (snd t))) (zip groupedDeclStrs declNames) 
+    Left x -> do
+      return []
+  
 
 processSourceFile :: String -> String -> IO ()
 processSourceFile outF inF = do
@@ -83,23 +126,41 @@ getNamedDecls docMaker decls = do
 declNamesEqual :: (SDoc -> String) -> LHsDecl GhcPs -> LHsDecl GhcPs -> Bool
 declNamesEqual docMaker decl1 decl2 = getDeclName docMaker decl1 == getDeclName docMaker decl2
 
-declStrsFromParsedSource :: (SDoc -> String) -> ParsedSource -> String
-declStrsFromParsedSource docMaker psource = do
+treeDeclStrsFromParsedSource = declStrsFromParsedSource showData
+
+plainDeclStrsFromParsedSource :: (SDoc -> String) -> ParsedSource -> [[String]]
+plainDeclStrsFromParsedSource docMaker = declStrsFromParsedSource (showDecl docMaker) docMaker
+
+declStrsFromParsedSource :: (GHC.LHsDecl ( GHC.GhcPs ) -> String) -> (SDoc -> String) -> ParsedSource -> [[String]]
+declStrsFromParsedSource serializer docMaker psource = do
   let decls = hsmodDecls ( unpackLocatedData (psource) )
   let groupedDecls = groupBy ( declNamesEqual docMaker) decls
-  let groupedDeclStrs = map ( map ( showData ) ) groupedDecls
-  let finalStr = intercalate "\n<|splitter|>\n" ( map ( intercalate "\n" ) groupedDeclStrs )
-  finalStr
+  let groupedDeclStrs = map ( map ( serializer ) ) groupedDecls
+  groupedDeclStrs
   
-declStrs :: String -> IO (Either ErrUtils.ErrorMessages String)
-declStrs targetFile = do
+unconcatedDeclStrs :: String -> IO (Either ErrUtils.ErrorMessages [[String]]) 
+unconcatedDeclStrs targetFile = do
   parsedSource <- parseSource targetFile
   dflags <- runGhc (Just libdir) $ do
-        getSessionDynFlags
+    getSessionDynFlags
   let docMaker = showSDoc dflags
   case parsedSource of
     Right res -> do
-      return ( Right (declStrsFromParsedSource docMaker res))
+      return ( Right ( plainDeclStrsFromParsedSource docMaker res ) )
+    Left x -> do
+      return (Left x)
+
+
+concatDeclStrsSimple :: [[String]] -> String 
+concatDeclStrsSimple strs = do
+  intercalate "\n<|splitter|>\n" ( map ( intercalate "\n" ) strs )
+  
+declStrs :: String -> IO (Either ErrUtils.ErrorMessages String)
+declStrs targetFile = do
+  unconcated <- unconcatedDeclStrs targetFile
+  case unconcated of
+    Right res -> do
+      return ( Right ( concatDeclStrsSimple res ) )
     Left x -> do
       return (Left x)
 

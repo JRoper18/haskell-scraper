@@ -38,6 +38,12 @@ dependencies:
 - filepath == 1.4.2.1
 - ghc-boot
 - text == 1.2.4.1
+- aeson == 2.0.3.0
+- utf8-string == 1.0.2
+- http-client == 0.7.11
+- http-types == 0.12.3
+- containers >= 0.6.0.0
+- process == 1.6.13.2
 
 library:
   source-dirs: src
