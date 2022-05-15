@@ -35,7 +35,8 @@ data ParsedExample = ParsedExample {
   context :: SourceContext,
   content :: String,
   binds :: [String],
-  name :: Maybe String
+  name :: String,
+  signature :: Maybe String
 } deriving (Generic, Eq, Show, Read)
 
 instance ToJSON ParsedExample where
@@ -55,13 +56,14 @@ showDecl docMaker decl = do
 keepDecl :: GHC.LHsDecl ( GHC.GhcPs ) -> Bool
 keepDecl decl = isJust ( getDeclIds (decl) )
 
-parsedExampleFromBinds :: SourceContext -> [String] -> Maybe String  -> ParsedExample
-parsedExampleFromBinds sc binds name = do
+parsedExampleFromBinds :: SourceContext -> [String] -> String -> Maybe String -> ParsedExample
+parsedExampleFromBinds sc binds name sig = do
   ParsedExample {
     context = sc,
     content = intercalate "\n" binds,
     binds = binds,
-    name = name
+    name = name,
+    signature = sig
   }
 
 getExampleFromSourceContext :: FilePath -> SourceContext -> IO ( [ParsedExample] ) 
@@ -73,11 +75,25 @@ getExampleFromSourceContext prefixPath context = do
         dflags <- runGhc (Just libdir) $ do
           getSessionDynFlags
         let docMaker = showSDoc dflags
-        let decls = hsmodDecls (unpackLocatedData parsedSource)
-        let groupedDecls = groupBy ( declNamesEqual docMaker) decls
-        let groupedDeclStrs = filter (not . null ) (map ( map ( showDecl docMaker ) ) groupedDecls )
-        let declNames = map (getDeclName docMaker) (head groupedDecls)
-        return $ map (\t -> (parsedExampleFromBinds context (fst t) (snd t))) (zip groupedDeclStrs declNames) 
+        let namedDecls = getNamedDecls docMaker (hsmodDecls (unpackLocatedData parsedSource))
+        let decls = map fst namedDecls
+        let groupedDecls = filter (not . null) (groupBy ( declNamesEqual docMaker) decls)
+        let sigDecls = map ((\decl -> case (unpackLocatedData decl) of 
+                                 SigD _ _ -> Just decl
+                                 _ -> Nothing     
+                            ) . head) groupedDecls
+        let sigStrs = map (\declMb -> case declMb of
+                                       Just decl -> Just ((showDecl docMaker) decl)
+                                       Nothing -> Nothing) sigDecls
+        let groupedDeclStrs = (map ( map ( showDecl docMaker ) ) groupedDecls )
+        let declNames = catMaybes (map (getDeclName docMaker . head) (groupedDecls))
+        if (length declNames) /= (length groupedDeclStrs) then do
+          putStrLn "PANIC ON NAME DETECTION" 
+          print declNames
+          print groupedDeclStrs 
+          return [] 
+        else do 
+          return $ map (uncurry3 (parsedExampleFromBinds context)) (zip3 groupedDeclStrs declNames sigStrs) 
     Left x -> do
       return []
   

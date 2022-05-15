@@ -18,8 +18,10 @@ import System.Process
 import GHC.IO.Handle.Text
 import Data.Aeson (object, (.=), encode, decode)
 import System.Directory
-import qualified Data.ByteString.Lazy as BL(writeFile, readFile)
-
+import qualified Data.ByteString.Lazy as BL(singleton, writeFile, intercalate, readFile)
+import Data.ByteString.UTF8 as BSU(fromString)     -- from utf8-string
+import System.Timeout
+import Data.Char(ord)
 
 outPackagesDir = "../haskell-srcs-hackage"
 
@@ -91,6 +93,7 @@ sourceContextFilePath outPkgDir = outPkgDir ++ "sourceContext.json"
 
 parseDownloaded :: Manager -> String -> IO () 
 parseDownloaded manager packageDir = do
+  putStrLn ("Parsing package in dir " ++ packageDir)
   let hsFilesListFile = hsFilesListFilePath packageDir
   let sourceContextFile = sourceContextFilePath packageDir 
   -- Parse what you can
@@ -105,7 +108,10 @@ parseDownloaded manager packageDir = do
         parsedExamplesUnflat <- mapM (\hsF -> getExampleFromSourceContext (outPackagesDir ++ "/") sc'{filePath=hsF}) hsFiles
         let parsedExamples = concat parsedExamplesUnflat
         let examplesFile = packageDir ++ "parsed.json"
-        BL.writeFile examplesFile (encode parsedExamples)
+        let encoded = map encode parsedExamples
+        let bsNl = BL.singleton (fromIntegral ( ord '\n'))
+        let wr = BL.intercalate bsNl encoded
+        BL.writeFile examplesFile wr
       _ -> return ()
   else putStrLn $ "No source context file found at " ++ sourceContextFile
 
@@ -120,19 +126,28 @@ downloadPackageAndSave manager package = do
     doesntNeedDownload <- (doesDirectoryExist outPkgDir)
     -- Download it if it's not there. 
     if (not doesntNeedDownload) then do
-        putStrLn "downloading package"
+        putStrLn ("downloading package " ++ package)
         (downloadPackage tmpTarOutF manager sc)
+        let tarCmd = "tar -xvf " ++ tmpTarOutF ++ " -C " ++ outPackagesDir
+        putStrLn ("done downloading! untarring with command " ++ tarCmd)
         -- Untar the tmp. It'll output a list of files it unzipped, too. 
-        (_,Just ho1, _, hp1) <- createProcess (shell ("tar -xvf " ++ tmpTarOutF ++ " -C " ++ outPackagesDir)) {std_out=CreatePipe}
+        (_,Just ho1,_, hp1) <- createProcess (shell tarCmd) {std_out=CreatePipe, std_err=Inherit}
+        putStrLn "waiting for untar..."
         sOut <- hGetContents ho1
-        _ <- waitForProcess hp1
-        -- The HS files from stdout. 
-        let hsFiles = filter (\inF -> isSuffixOf ".hs" inF) (lines sOut)
-        -- Save the list of HS files extracted
-        writeFile hsFilesListFile (intercalate "\n" hsFiles)
-        -- Save the context
-        let ctxStr = encode sc
-        BL.writeFile sourceContextFile ctxStr
+        -- Wait for timeout for 5 seconds
+        timedOut <- timeout 5000000 (waitForProcess hp1)
+        if isNothing timedOut then do
+          putStrLn "timeout on untar!"
+        else do
+          putStrLn ("done untarring! saving data")
+          -- The HS files from stdout. 
+          let hsFiles = filter (\inF -> isSuffixOf ".hs" inF) (lines sOut)
+          -- Save the list of HS files extracted
+          writeFile hsFilesListFile (intercalate "\n" hsFiles)
+          -- Save the context
+          let ctxStr = encode sc
+          BL.writeFile sourceContextFile ctxStr
+          putStrLn ("saved!")
     else putStrLn $ "Package dir already found!"
 
 

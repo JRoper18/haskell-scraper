@@ -73,6 +73,11 @@ downloadPackage outF manager sc = do
     let downloadURL = "http://hackage.haskell.org/package/" ++ pkgName ++ "/" ++ pkgName ++ "-" ++ (packageVersion sc) ++ ".tar.gz"
     req <- parseRequest downloadURL
     rsp <- httpLbs req manager
-    putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus rsp)
-    -- Save the body
-    BL.writeFile outF (responseBody rsp)
+    let code = statusCode $ responseStatus rsp
+    putStrLn $ "The status code was: " ++ (show $ code)
+    if code == 200 then do
+        -- Save the body
+        BL.writeFile outF (responseBody rsp)
+    else do
+        putStrLn $ "Error on package " ++ pkgName 
+        return ()
