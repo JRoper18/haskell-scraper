@@ -34,7 +34,7 @@ parsedArgs :: Parser MainArgs
 parsedArgs = MainArgs
     <$> strOption
         ( long "mode"
-        <> help "Must be either parse or type." )
+        <> help "Must be either parse, type, download, parseDownloaded" )
     <*> strOption
         ( long "outputFile"
         <> short 'o'
@@ -82,8 +82,17 @@ mainHelp (MainArgs "parseDownloaded" outF i) = do
   mapM_ (\dir -> do
         parseDownloaded manager (outPackagesDir ++ "/" ++ dir ++ "/")
     ) packageDirs
+  putStrLn "Parsed all downloaded! Concatenating to single file..."
+  mapM_ (\dir -> do
+      examples <- readFile (examplesFilePath dir)
+      appendFile outF examples
+      appendFile outF "\n"
+    )
 
 mainHelp (MainArgs mode _ _) = putStrLn $ "Unknown mode " ++ mode
+
+examplesFilePath :: String -> String 
+examplesFilePath packageDir = packageDir ++ "parsed.json"
 
 hsFilesListFilePath :: String -> String 
 hsFilesListFilePath outPkgDir = outPkgDir ++ "hsFileList.txt"
@@ -107,7 +116,7 @@ parseDownloaded manager packageDir = do
         let hsFiles = lines hsFileContents 
         parsedExamplesUnflat <- mapM (\hsF -> getExampleFromSourceContext (outPackagesDir ++ "/") sc'{filePath=hsF}) hsFiles
         let parsedExamples = concat parsedExamplesUnflat
-        let examplesFile = packageDir ++ "parsed.json"
+        let examplesFile = examplesFilePath packageDir
         let encoded = map encode parsedExamples
         let bsNl = BL.singleton (fromIntegral ( ord '\n'))
         let wr = BL.intercalate bsNl encoded

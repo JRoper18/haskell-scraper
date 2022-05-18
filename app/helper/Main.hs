@@ -46,7 +46,7 @@ data MainArgs = MainArgs
   { mode      :: String
   , mainInput :: Input
   , stage :: Maybe String
-  , subArgs :: Maybe String}
+  }
 
 parsedArgs :: Parser MainArgs
 parsedArgs = MainArgs
@@ -59,10 +59,6 @@ parsedArgs = MainArgs
         (long "stage"
         <> short 'g'
         <> help "Either type or parse. Which kind of ast or pretty-ification to do. Defaults to parse. ") )
-    <*> optional (strOption
-        ( long "subArgs"
-        <> short 's'
-        <> help "When using eval mode, these are a space-seperated list of args to pass to the function. " ) )
 
 main :: IO ()
 main = mainHelp =<< execParser opts
@@ -73,21 +69,13 @@ main = mainHelp =<< execParser opts
      <> header "Who the fuck uses program headers" )
 
 mainHelp :: MainArgs -> IO ()
-mainHelp ( MainArgs "ast" mainIn (Just "parse") subArgs ) = astParse mainIn
-mainHelp ( MainArgs "ast" mainIn (Just "type") subArgs ) = astType mainIn
-mainHelp ( MainArgs "ast" mainIn Nothing subArgs ) = astType mainIn
-mainHelp ( MainArgs "pretty" mainIn (Just "type") subArgs ) = prettyType mainIn
-mainHelp ( MainArgs "pretty" mainIn (Just "parse") subArgs ) = prettyParse mainIn
-mainHelp ( MainArgs "pretty" mainIn Nothing subArgs ) = prettyParse mainIn
-mainHelp ( MainArgs "eval" mainIn _ (Just subArgs) ) = do
-  docMaker <- makeDocMaker
-  inputStr <- inputToStr mainIn
-  let declStrs = filter (not . (all isSpace)) (lines inputStr)
-  mapM_ (\declS -> if isNothing (readData (declS) :: Maybe (LHsDecl GhcPs)) then putStrLn ("Bad decl" ++ declS) else return()) declStrs
-  let decls = map readData (lines inputStr) :: [Maybe (LHsDecl GhcPs)]
-  strRes <- evalToStr docMaker (catMaybes decls) subArgs
-  putStrLn strRes
-mainHelp _ = return ()
+mainHelp ( MainArgs "ast" mainIn (Just "parse") ) = astParse mainIn
+mainHelp ( MainArgs "ast" mainIn (Just "type") ) = astType mainIn
+mainHelp ( MainArgs "ast" mainIn Nothing ) = astType mainIn
+mainHelp ( MainArgs "pretty" mainIn (Just "type") ) = prettyType mainIn
+mainHelp ( MainArgs "pretty" mainIn (Just "parse") ) = prettyParse mainIn
+mainHelp ( MainArgs "pretty" mainIn Nothing ) = prettyParse mainIn
+
 
 
 
